@@ -7,6 +7,7 @@ import LedgerPage, { LedgerLayout } from './pages/LedgerPage'
 import ImportPage from './pages/ImportPage'
 import CashJournalPage from './pages/CashJournalPage'
 import YearSummaryPage from './pages/YearSummaryPage'
+import ReceiptsPage from './pages/ReceiptsPage'
 
 /**
  * The nav is the six destinations from the source design. Those not yet built
@@ -34,15 +35,7 @@ export default function App() {
             />
           }
         />
-        <Route
-          path="receipts"
-          element={
-            <Placeholder
-              title="Receipts"
-              body="Sequentially numbered receipts for cash and cheque contributions. Donor names live behind the treasurer's PIN. Phase 5."
-            />
-          }
-        />
+        <Route path="receipts" element={<ReceiptsPage />} />
         <Route
           path="budget"
           element={

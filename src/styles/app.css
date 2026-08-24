@@ -1170,3 +1170,25 @@ a {
     min-width: 460px;
   }
 }
+
+/* ── receipts and the donor vault (Phase 5) ────────────────────────────── */
+
+.bd-voidform {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.bd-voidform .bd-input {
+  width: 130px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* Anything held back behind the PIN reads as deliberately withheld rather
+   than missing, so the treasurer can tell the two apart at a glance. */
+.bd-locked {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--bd-muted);
+}

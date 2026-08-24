@@ -192,12 +192,18 @@ export async function seed(db: SqlDatabase): Promise<void> {
   }
 
   for (const id of DONORS) {
+    // Eleven households that have given, with no name on file.
+    //
+    // The seed cannot write an encrypted name: encryption needs the
+    // treasurer's PIN, and no vault exists until they set one. A placeholder
+    // string here would be ciphertext the vault cannot open, so the column
+    // stays NULL — which is also the truthful state. Everything that matters
+    // for reporting is the opaque id, and the household count on a Feast
+    // report works from that alone.
     await db.run(
       `INSERT INTO donors (id, assembly_id, name_encrypted, is_anonymous, created_at)
-       VALUES (?, ?, ?, 0, ?)`,
-      // Ciphertext placeholder. Real encryption arrives with the PIN in Phase 5;
-      // what matters structurally is that no plaintext name is ever written here.
-      [id, ASSEMBLY_ID, `enc:${id}`, NOW],
+       VALUES (?, ?, NULL, 0, ?)`,
+      [id, ASSEMBLY_ID, NOW],
     )
   }
 

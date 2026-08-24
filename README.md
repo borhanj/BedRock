@@ -62,8 +62,11 @@ transactions*, *Cash journal*, *Import a statement*.
 books, present at Feast, reopen — plus the year-end summary at `/report/:year` and a print
 path for both.
 
-Phases 5–7 (the donor vault, funds and budget, the Audit Package) are not built. Their nav
-destinations name the phase that fills them in.
+**Phase 5 — receipts and the donor vault.** Encrypted donor identity behind a PIN, gapless
+receipt numbering, void-not-delete, and a log of who has looked at donor detail.
+
+Phases 6–7 (funds and budget, the Audit Package) are not built. Their nav destinations name
+the phase that fills them in.
 
 ### Running against real Cloudflare
 
@@ -140,6 +143,9 @@ src/
                repo/ledger.ts    ledger, cash journal, hand entry
                repo/import.ts    preview and commit
                repo/rules.ts     learned categorisation
+               repo/donors.ts    the donor vault — the only reader of `donors`
+               repo/receipts.ts  gapless numbering, void-not-delete
+               vault/crypto.ts   PBKDF2 + AES-GCM, and its threat model
   data/        api.ts            browser fetch helpers
                YearContext.tsx   the year, fetched once and shared
   components/  AppShell, NineteenMonths, WhereMoneySits, NeedsAttention,
@@ -204,6 +210,25 @@ offered as a button and a plain-English reason. Accepting it is the treasurer's 
 in the system writes a category nobody chose, and broader `contains` rules are only ever
 created deliberately — inferring that a shared word implies a shared category is how
 auto-categorisation starts quietly miscategorising.
+
+**Donor names are encrypted, and the reports prove they are not needed.** Identity is
+AES-GCM encrypted with a key derived from the treasurer's PIN; amounts, funds and dates stay
+plaintext against an opaque `donor_id`. The acceptance test renames the `donors` table out
+from under the app and asserts the dashboard, the Feast report — household count included —
+and the year summary all still work. Reading a name is logged, and that log is readable
+without the PIN, because oversight only the overseen can inspect is not oversight.
+
+**What the PIN does and does not protect.** §4 asks for protection "if the app is ever used
+on a shared or Assembly-owned device", and that is the threat model: someone at the
+treasurer's laptop. It is **not** protection against someone who obtains the database. A
+six-digit PIN is a million offline guesses; 150,000 PBKDF2 rounds raise that cost without
+removing it, which is why a passphrase is allowed and encouraged. What encryption buys
+unconditionally is that names never sit in plaintext in the database, a backup, an export or
+the audit log. The PIN is held in browser memory only — never localStorage, never a cookie.
+
+**Receipt numbering is gapless.** A receipt is never deleted; a trigger refuses it. A mistake
+is voided with a stated reason, keeps its number, and the corrected receipt takes the next one.
+A gap in a receipt book reads to an auditor as a destroyed record.
 
 **The audit trail is enforced by triggers, not by convention.** An application-level rule only
 covers the code paths that remember it. The triggers in `0001_core.sql` fire for any write from

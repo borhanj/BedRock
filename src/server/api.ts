@@ -34,6 +34,25 @@ import {
   loadLedger,
 } from './repo/ledger'
 import { forgetRule, listRules } from './repo/rules'
+import {
+  changeSecret,
+  createAnonymousDonor,
+  createDonor,
+  listDonors,
+  readAccessLog,
+  setupVault,
+  vaultStatus,
+  verifySecret,
+  VaultError,
+} from './repo/donors'
+import {
+  issueReceipt,
+  listReceipts,
+  ReceiptError,
+  receiptSummary,
+  unreceiptedGifts,
+  voidReceipt,
+} from './repo/receipts'
 
 export interface ApiContext {
   readonly db: SqlDatabase
@@ -92,8 +111,13 @@ export async function handleApi(
     }
     // Closing, presenting and reopening a report follow an order. Asking for a
     // step out of turn is a conflict, not a crash.
-    if (error instanceof ReportStateError) {
+    if (error instanceof ReportStateError || error instanceof ReceiptError) {
       return json({ error: error.message }, 409)
+    }
+    // A wrong or missing PIN. 403 rather than 401: the treasurer IS signed in
+    // through Access; what they lack is authorisation for donor detail.
+    if (error instanceof VaultError) {
+      return json({ error: error.message }, 403)
     }
     // A date outside the Naw-Rúz table is a known, explicable condition rather
     // than a crash — the message names the file to extend.
@@ -206,6 +230,112 @@ async function route(
   if (cash && method === 'GET') {
     const resolved = cash[1] === 'current' ? bahaiYearFor(ctx.today) : Number(cash[1])
     return json(await loadCashJournal(db, assemblyId, resolved))
+  }
+
+  // ── the donor vault ────────────────────────────────────────────────────
+  //
+  // The PIN travels in the request body on the few routes that need it, and
+  // is held only in browser memory. It is never stored, never logged, and
+  // never written to the audit trail.
+  if (path === 'vault' && method === 'GET') {
+    return json(await vaultStatus(db, assemblyId))
+  }
+  if (path === 'vault/setup' && method === 'POST') {
+    const body = (await request.json()) as { pin?: string }
+    await setupVault(db, assemblyId, required(body.pin, 'pin'), ctx.actor, ctx.now)
+    return json(await vaultStatus(db, assemblyId), 201)
+  }
+  if (path === 'vault/unlock' && method === 'POST') {
+    const body = (await request.json()) as { pin?: string }
+    const ok = await verifySecret(db, assemblyId, required(body.pin, 'pin'))
+    return ok
+      ? json({ unlocked: true })
+      : json({ error: 'That PIN does not open the donor records.' }, 403)
+  }
+  if (path === 'vault/pin' && method === 'POST') {
+    const body = (await request.json()) as { pin?: string; newPin?: string }
+    const rekeyed = await changeSecret(
+      db, assemblyId,
+      required(body.pin, 'pin'), required(body.newPin, 'newPin'),
+      ctx.actor, ctx.now,
+    )
+    return json({ rekeyed })
+  }
+  if (path === 'vault/access-log' && method === 'GET') {
+    // Readable without the PIN on purpose: oversight only the person being
+    // overseen can read is not oversight.
+    return json(await readAccessLog(db, assemblyId))
+  }
+
+  // ── donors ─────────────────────────────────────────────────────────────
+  if (path === 'donors' && method === 'POST') {
+    const body = (await request.json()) as {
+      pin?: string
+      name?: string
+      contact?: string
+      anonymous?: boolean
+    }
+    if (body.anonymous) {
+      return json({ id: await createAnonymousDonor(db, assemblyId, ctx.actor, ctx.now) }, 201)
+    }
+    const id = await createDonor(
+      db, assemblyId,
+      {
+        name: required(body.name, 'name'),
+        contact: body.contact ?? null,
+        secret: required(body.pin, 'pin'),
+      },
+      ctx.actor, ctx.now,
+    )
+    return json({ id }, 201)
+  }
+  if (path === 'donors/list' && method === 'POST') {
+    const body = (await request.json()) as { pin?: string; reason?: string }
+    return json(
+      await listDonors(
+        db, assemblyId, required(body.pin, 'pin'),
+        body.reason ?? 'viewed the donor list', ctx.actor, ctx.now,
+      ),
+    )
+  }
+
+  // ── receipts ───────────────────────────────────────────────────────────
+  if (path === 'receipts' && method === 'GET') {
+    return json({
+      receipts: await listReceipts(db, assemblyId),
+      summary: await receiptSummary(db, assemblyId),
+      awaiting: await unreceiptedGifts(db, assemblyId),
+    })
+  }
+  if (path === 'receipts' && method === 'POST') {
+    const body = (await request.json()) as {
+      contributionId?: string
+      donorId?: string | null
+      note?: string | null
+      issuedOn?: string
+    }
+    return json(
+      await issueReceipt(
+        db, assemblyId,
+        {
+          contributionId: required(body.contributionId, 'contributionId'),
+          donorId: body.donorId ?? null,
+          note: body.note ?? null,
+          issuedOn: body.issuedOn ?? ctx.today,
+        },
+        ctx.actor,
+      ),
+      201,
+    )
+  }
+  const voidReceiptRoute = /^receipts\/([^/]+)\/void$/.exec(path)
+  if (voidReceiptRoute && method === 'POST') {
+    const body = (await request.json()) as { reason?: string }
+    const view = await voidReceipt(
+      db, assemblyId, decodeURIComponent(voidReceiptRoute[1]),
+      required(body.reason, 'reason'), ctx.actor, ctx.now,
+    )
+    return view ? json(view) : json({ error: 'No such receipt' }, 404)
   }
 
   // ── learned rules ──────────────────────────────────────────────────────

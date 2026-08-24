@@ -18,8 +18,20 @@ import type {
 } from '../server/repo/ledger'
 import type { ColumnMapping } from '../server/import/mapping'
 import type { RuleView } from '../server/repo/rules'
+import type {
+  ReceiptView,
+  ReceiptLogSummary,
+  UnreceiptedGift,
+} from '../server/repo/receipts'
+import type { AccessLogEntry, DonorView, VaultStatus } from '../server/repo/donors'
 
 export type {
+  ReceiptView,
+  ReceiptLogSummary,
+  UnreceiptedGift,
+  DonorView,
+  VaultStatus,
+  AccessLogEntry,
   ImportPreview,
   CashJournal,
   LedgerRow,
@@ -155,6 +167,52 @@ export const presentReport = (bahaiYear: number, monthNumber: number) =>
 /** Reopen closed books. Deliberate, and audited. */
 export const unlockReport = (bahaiYear: number, monthNumber: number) =>
   post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}/unlock`, {})
+
+// ── the donor vault ──────────────────────────────────────────────────────────
+//
+// The PIN is passed in from the caller's session and never cached here.
+
+export const fetchVaultStatus = () => call<VaultStatus>('/api/vault')
+
+export const setupVault = (pin: string) => post<VaultStatus>('/api/vault/setup', { pin })
+
+export const unlockVault = (pin: string) =>
+  post<{ unlocked: boolean }>('/api/vault/unlock', { pin })
+
+export const changeVaultPin = (pin: string, newPin: string) =>
+  post<{ rekeyed: number }>('/api/vault/pin', { pin, newPin })
+
+/** Readable without the PIN: oversight the overseen cannot inspect is not oversight. */
+export const fetchAccessLog = () => call<AccessLogEntry[]>('/api/vault/access-log')
+
+export const listDonors = (pin: string, reason: string) =>
+  post<DonorView[]>('/api/donors/list', { pin, reason })
+
+export const createDonor = (pin: string, name: string, contact?: string) =>
+  post<{ id: string }>('/api/donors', { pin, name, contact })
+
+export const createAnonymousDonor = () =>
+  post<{ id: string }>('/api/donors', { anonymous: true })
+
+// ── receipts ─────────────────────────────────────────────────────────────────
+
+export interface ReceiptBook {
+  receipts: ReceiptView[]
+  summary: ReceiptLogSummary
+  awaiting: UnreceiptedGift[]
+}
+
+export const fetchReceipts = () => call<ReceiptBook>('/api/receipts')
+
+export const issueReceipt = (body: {
+  contributionId: string
+  donorId: string | null
+  note: string | null
+  issuedOn?: string
+}) => post<ReceiptView>('/api/receipts', body)
+
+export const voidReceipt = (id: string, reason: string) =>
+  post<ReceiptView>(`/api/receipts/${encodeURIComponent(id)}/void`, { reason })
 
 export const createTransaction = (body: {
   accountId: string
