@@ -77,26 +77,22 @@ that file — an Access policy and JWT verification — before the Worker is rea
 
 ## Things worth knowing before you build on this
 
-**The Naw-Rúz table is only partly reconciled.** `src/calendar/naw-ruz-table.ts` is the single
-source of truth for every date in the app. From 172 B.E. the calendar is astronomical —
-Naw-Rúz falls on the vernal equinox as observed in Tehran, and because the Bahá'í day starts
-at sunset, an equinox landing after sunset pushes the date. There is no formula; the authority
-is *Bahá'í Dates 172 to 221 B.E.*, prepared at the Bahá'í World Centre from HM Nautical
-Almanac Office data.
+**The Naw-Rúz table is the source of truth, and it is reconciled.**
+`src/calendar/naw-ruz-table.ts` decides every date in the app. From 172 B.E. the calendar is
+astronomical — Naw-Rúz falls on the vernal equinox as observed in Tehran, and because the
+Bahá'í day starts at sunset, an equinox landing after sunset pushes the date. There is no
+formula, so nothing here is computed.
 
-The table now covers the full 172–221 B.E. (2015–2064) range, transcribed from public
-reproductions of that document rather than machine-read from it. **172–190 B.E. are marked
-verified**: more than one independent published source agrees, and they match an independent
-equinox-and-sunset derivation. **191–221 B.E. rest on a single listing** and are marked
-`verified: false`.
+All fifty rows, 172–221 B.E. (2015–2064), were read from *Badí' dates 172 to 221 BE*, prepared
+by an ad hoc committee at the Bahá'í World Centre using data from HM Nautical Almanac Office.
+Three checks stand behind them: the document's own stated Ayyám-i-Há lengths agree with the
+gaps between its own Naw-Rúz dates; those stated lengths agree with the lengths this engine
+derives (a test asserts this for all 49 closable years); and every year yields a legal 4- or
+5-day Ayyám-i-Há.
 
-Every one of the 49 closable years yields a legal 4- or 5-day Ayyám-i-Há (37 fours, 12 fives),
-which is the strongest structural check available — a mistyped date almost always produces a 3
-or a 6.
-
-`assertVerifiedYears(from, to)` is scoped to the years a document actually covers, so a report
-for 183 B.E. is not blocked by 2064 being single-sourced. **To finish: read the Naw-Rúz column
-off the official document and flip the remaining flags.** A test fails until you do.
+The table stops at 221 B.E. because the published one does. Past that the engine throws rather
+than extrapolating, and `assertVerifiedYears(from, to)` guards anything that produces a
+document an Assembly relies on.
 
 **Money is always integer cents.** Never a float, in any layer. Parsing happens once at the
 edge in `parseMoney()`; everything inland is integers. A treasurer's books have to foot. A

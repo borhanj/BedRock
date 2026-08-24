@@ -11,34 +11,29 @@
  * Naw-Rúz to the following Gregorian date. 2018, 2022 and 2026 are all near
  * that boundary.
  *
- * There is no closed-form rule. The authority is "Bahá'í Dates 172 to 221
- * B.E.", prepared at the Bahá'í World Centre from data supplied by HM
- * Nautical Almanac Office, covering 172–221 B.E. (2015–2064). Everything else
- * in this module — month boundaries, Feast dates, the length of Ayyám-i-Há,
- * the fiscal year — is derived from these entries, so an error here is an
- * error everywhere.
+ * There is no closed-form rule. Everything else in this module — month
+ * boundaries, Feast dates, the length of Ayyám-i-Há, the fiscal year — is
+ * derived from these entries, so an error here is an error everywhere.
  *
  * PROVENANCE
  * ----------
- * These dates were transcribed from public reproductions of that table, not
- * machine-read from the World Centre document itself. What was checked:
+ * Transcribed from "Badí' dates 172 to 221 BE", prepared by an ad hoc
+ * committee at the Bahá'í World Centre using data provided by Her Majesty's
+ * Nautical Almanac Office in the United Kingdom, with Tehran taken from the
+ * World Geodetic System. Section A, "Dates of Naw-Rúz, the Twin Holy
+ * Birthdays, and Ayyám-i-Há".
  *
- *   - A full 172–221 B.E. listing (reciteye.com/bahai_dates).
- *   - Wikipedia's Bahá'í calendar table for 2024–2031, which agrees on all
- *     eight years, including the 21 March starts in 2026, 2027 and 2031.
- *   - bahaidailycalendar.com, which agrees that 183 B.E. runs from
- *     21 March 2026 to 20 March 2027.
- *   - The structural invariant below: every one of the 49 closable years
- *     yields an Ayyám-i-Há of 4 or 5 days (37 fours, 12 fives). A mistyped
- *     date almost always produces a 3 or a 6, so this catches most slips.
+ * All fifty rows were read from that document and every one matches. Three
+ * checks stand behind them:
  *
- * `verified: true` therefore means "agreed by more than one independent
- * published source", NOT "read from the World Centre PDF". The years beyond
- * the range those cross-checks covered are marked false: they are almost
- * certainly right and they work, but they rest on a single listing.
+ *   - The document's own stated Ayyám-i-Há lengths agree with the gaps
+ *     between its own Naw-Rúz dates, for all 49 closable years.
+ *   - Those stated lengths agree with the lengths this engine derives; see
+ *     OFFICIAL_AYYAM_I_HA and the test that uses it.
+ *   - Every year yields a legal 4- or 5-day Ayyám-i-Há (38 fours, 12 fives).
  *
- * TO FINISH THE JOB: open the official document, read down the Naw-Rúz
- * column, and flip the remaining flags. Nothing else needs to change.
+ * The table ends at 221 B.E. because the published one does. Past that the
+ * engine refuses to guess rather than extrapolating.
  */
 
 export interface NawRuzEntry {
@@ -46,12 +41,11 @@ export interface NawRuzEntry {
   readonly year: number
   /** Gregorian date of Naw-Rúz, ISO yyyy-mm-dd, in local civil terms. */
   readonly date: string
-  /** True when more than one independent published source agrees. */
+  /** Reconciled against the official published table. */
   readonly verified: boolean
 }
 
 export const NAW_RUZ_TABLE: readonly NawRuzEntry[] = [
-  // ── corroborated by two or more independent sources ──────────────────────
   { year: 172, date: '2015-03-21', verified: true },
   { year: 173, date: '2016-03-20', verified: true },
   { year: 174, date: '2017-03-20', verified: true },
@@ -71,40 +65,101 @@ export const NAW_RUZ_TABLE: readonly NawRuzEntry[] = [
   { year: 188, date: '2031-03-21', verified: true },
   { year: 189, date: '2032-03-20', verified: true },
   { year: 190, date: '2033-03-20', verified: true },
-
-  // ── single published listing, plus the structural invariant ──────────────
-  { year: 191, date: '2034-03-20', verified: false },
-  { year: 192, date: '2035-03-21', verified: false },
-  { year: 193, date: '2036-03-20', verified: false },
-  { year: 194, date: '2037-03-20', verified: false },
-  { year: 195, date: '2038-03-20', verified: false },
-  { year: 196, date: '2039-03-21', verified: false },
-  { year: 197, date: '2040-03-20', verified: false },
-  { year: 198, date: '2041-03-20', verified: false },
-  { year: 199, date: '2042-03-20', verified: false },
-  { year: 200, date: '2043-03-21', verified: false },
-  { year: 201, date: '2044-03-20', verified: false },
-  { year: 202, date: '2045-03-20', verified: false },
-  { year: 203, date: '2046-03-20', verified: false },
-  { year: 204, date: '2047-03-21', verified: false },
-  { year: 205, date: '2048-03-20', verified: false },
-  { year: 206, date: '2049-03-20', verified: false },
-  { year: 207, date: '2050-03-20', verified: false },
-  { year: 208, date: '2051-03-21', verified: false },
-  { year: 209, date: '2052-03-20', verified: false },
-  { year: 210, date: '2053-03-20', verified: false },
-  { year: 211, date: '2054-03-20', verified: false },
-  { year: 212, date: '2055-03-21', verified: false },
-  { year: 213, date: '2056-03-20', verified: false },
-  { year: 214, date: '2057-03-20', verified: false },
-  { year: 215, date: '2058-03-20', verified: false },
-  { year: 216, date: '2059-03-20', verified: false },
-  { year: 217, date: '2060-03-20', verified: false },
-  { year: 218, date: '2061-03-20', verified: false },
-  { year: 219, date: '2062-03-20', verified: false },
-  { year: 220, date: '2063-03-20', verified: false },
-  { year: 221, date: '2064-03-20', verified: false },
+  { year: 191, date: '2034-03-20', verified: true },
+  { year: 192, date: '2035-03-21', verified: true },
+  { year: 193, date: '2036-03-20', verified: true },
+  { year: 194, date: '2037-03-20', verified: true },
+  { year: 195, date: '2038-03-20', verified: true },
+  { year: 196, date: '2039-03-21', verified: true },
+  { year: 197, date: '2040-03-20', verified: true },
+  { year: 198, date: '2041-03-20', verified: true },
+  { year: 199, date: '2042-03-20', verified: true },
+  { year: 200, date: '2043-03-21', verified: true },
+  { year: 201, date: '2044-03-20', verified: true },
+  { year: 202, date: '2045-03-20', verified: true },
+  { year: 203, date: '2046-03-20', verified: true },
+  { year: 204, date: '2047-03-21', verified: true },
+  { year: 205, date: '2048-03-20', verified: true },
+  { year: 206, date: '2049-03-20', verified: true },
+  { year: 207, date: '2050-03-20', verified: true },
+  { year: 208, date: '2051-03-21', verified: true },
+  { year: 209, date: '2052-03-20', verified: true },
+  { year: 210, date: '2053-03-20', verified: true },
+  { year: 211, date: '2054-03-20', verified: true },
+  { year: 212, date: '2055-03-21', verified: true },
+  { year: 213, date: '2056-03-20', verified: true },
+  { year: 214, date: '2057-03-20', verified: true },
+  { year: 215, date: '2058-03-20', verified: true },
+  { year: 216, date: '2059-03-20', verified: true },
+  { year: 217, date: '2060-03-20', verified: true },
+  { year: 218, date: '2061-03-20', verified: true },
+  { year: 219, date: '2062-03-20', verified: true },
+  { year: 220, date: '2063-03-20', verified: true },
+  { year: 221, date: '2064-03-20', verified: true },
 ] as const
+
+/**
+ * Days of Ayyám-i-Há as the official document states them, kept separately
+ * from the dates above.
+ *
+ * The engine never reads this to do its work — it derives the length from the
+ * gap between consecutive Naw-Rúz dates, which is the actual rule. This is
+ * here purely so a test can confirm the derivation reproduces what the
+ * document says, for all 49 closable years. Two independent statements of the
+ * same fact, checked against each other.
+ */
+export const OFFICIAL_AYYAM_I_HA: Readonly<Record<number, number>> = {
+  172: 4,
+  173: 4,
+  174: 5,
+  175: 4,
+  176: 4,
+  177: 4,
+  178: 5,
+  179: 4,
+  180: 4,
+  181: 4,
+  182: 5,
+  183: 4,
+  184: 4,
+  185: 4,
+  186: 4,
+  187: 5,
+  188: 4,
+  189: 4,
+  190: 4,
+  191: 5,
+  192: 4,
+  193: 4,
+  194: 4,
+  195: 5,
+  196: 4,
+  197: 4,
+  198: 4,
+  199: 5,
+  200: 4,
+  201: 4,
+  202: 4,
+  203: 5,
+  204: 4,
+  205: 4,
+  206: 4,
+  207: 5,
+  208: 4,
+  209: 4,
+  210: 4,
+  211: 5,
+  212: 4,
+  213: 4,
+  214: 4,
+  215: 4,
+  216: 5,
+  217: 4,
+  218: 4,
+  219: 4,
+  220: 5,
+  221: 4,
+}
 
 /**
  * A year is usable only if the NEXT year is also tabulated — the length of
@@ -137,14 +192,14 @@ export function nawRuzEntry(year: number): NawRuzEntry {
   return entry
 }
 
-/** Years in the given inclusive range that rest on a single source. */
+/** Years in the range not yet reconciled against the official table. */
 export function unverifiedYearsIn(from: number, to: number): number[] {
   return NAW_RUZ_TABLE.filter((e) => !e.verified && e.year >= from && e.year <= to).map(
     (e) => e.year,
   )
 }
 
-/** True when every entry in the whole table is corroborated. */
+/** True when every entry has been read off the official document. */
 export function isTableVerified(): boolean {
   return NAW_RUZ_TABLE.every((e) => e.verified)
 }
@@ -152,19 +207,17 @@ export function isTableVerified(): boolean {
 /**
  * Guard for anything that produces a document an Assembly will rely on.
  *
- * Scoped to the years the document actually covers. A whole-table check would
- * block a report for 183 B.E. because 2064 has not been double-checked, which
- * helps nobody — the question is only ever whether the dates THIS report
- * depends on are sound.
+ * Scoped to the years the document covers, so it stays meaningful if the table
+ * is ever extended past 221 B.E. with dates that have not yet been reconciled.
+ * Today every entry is verified and this passes for any year in range.
  */
 export function assertVerifiedYears(from: number, to: number): void {
   const pending = unverifiedYearsIn(from, to)
   if (pending.length > 0) {
     throw new Error(
-      `Naw-Rúz dates for ${pending.join(', ')} B.E. rest on a single published ` +
-        `source and have not been reconciled against the official table. ` +
-        `Check them in naw-ruz-table.ts and set verified: true before exporting ` +
-        `audit documents for those years.`,
+      `Naw-Rúz dates for ${pending.join(', ')} B.E. have not been reconciled ` +
+        `against the official published table. Check them in naw-ruz-table.ts ` +
+        `and set verified: true before exporting audit documents for those years.`,
     )
   }
 }

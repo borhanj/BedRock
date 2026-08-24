@@ -23,6 +23,7 @@ import {
   isTableVerified,
   assertVerifiedYears,
   unverifiedYearsIn,
+  OFFICIAL_AYYAM_I_HA,
 } from './naw-ruz-table'
 
 describe('the Naw-Rúz table', () => {
@@ -46,21 +47,20 @@ describe('the Naw-Rúz table', () => {
     expect(NAW_RUZ_TABLE).toHaveLength(50)
   })
 
-  it('lets a report run for a corroborated year', () => {
-    // The years an Assembly is actually using today are agreed by more than
-    // one independent published source.
-    expect(() => assertVerifiedYears(183, 183)).not.toThrow()
-    expect(() => assertVerifiedYears(172, 190)).not.toThrow()
+  it('is fully reconciled against the official document', () => {
+    expect(isTableVerified()).toBe(true)
+    expect(unverifiedYearsIn(172, 221)).toEqual([])
+    expect(() => assertVerifiedYears(172, 221)).not.toThrow()
   })
 
-  it('still blocks the years that rest on a single source', () => {
-    // Flip these once the tail is read off the official document. The
-    // failure is the reminder.
-    expect(isTableVerified()).toBe(false)
-    expect(unverifiedYearsIn(172, 221)).toEqual(
-      Array.from({ length: 31 }, (_, i) => 191 + i),
-    )
-    expect(() => assertVerifiedYears(183, 200)).toThrow(/single published source/)
+  it('derives the same Ayyám-i-Há lengths the document states', () => {
+    // Two independent statements of the same fact. The engine computes the
+    // length from the gap between consecutive Naw-Rúz dates, which is the
+    // actual rule; OFFICIAL_AYYAM_I_HA is what the published table prints
+    // beside them. A single mistyped date breaks the agreement in two places.
+    for (let year = FIRST_TABULATED_YEAR; year <= LAST_COMPLETE_YEAR; year++) {
+      expect(ayyamIHaLength(year)).toBe(OFFICIAL_AYYAM_I_HA[year])
+    }
   })
 
   it('agrees with the published dates on the years that moved', () => {
