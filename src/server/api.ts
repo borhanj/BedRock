@@ -11,7 +11,16 @@ import { bahaiYear as bahaiYearFor, CalendarRangeError } from '../calendar/badi'
 import type { SqlDatabase } from './db/adapter'
 import { setAuditActor } from './db/adapter'
 import { loadYear } from './repo/year'
-import { loadReport } from './repo/report'
+import {
+  ensureReport,
+  finalizeReport,
+  loadReport,
+  loadYearSummary,
+  presentReport,
+  ReportStateError,
+  setCutoff,
+  unlockReport,
+} from './repo/report'
 import {
   categorise,
   commitImport,
@@ -81,6 +90,11 @@ export async function handleApi(
     if (error instanceof BadRequest) {
       return json({ error: error.message }, 400)
     }
+    // Closing, presenting and reopening a report follow an order. Asking for a
+    // step out of turn is a conflict, not a crash.
+    if (error instanceof ReportStateError) {
+      return json({ error: error.message }, 409)
+    }
     // A date outside the Naw-Rúz table is a known, explicable condition rather
     // than a crash — the message names the file to extend.
     if (error instanceof CalendarRangeError) {
@@ -112,11 +126,55 @@ async function route(
 
   // ── reports ────────────────────────────────────────────────────────────
   const report = /^report\/(\d+)\/(\d+)$/.exec(path)
-  if (report && method === 'GET') {
-    const view = await loadReport(db, assemblyId, Number(report[1]), Number(report[2]))
-    return view
-      ? json(view)
-      : json({ error: 'No report has been built for that month yet.' }, 404)
+  if (report) {
+    const year = Number(report[1])
+    const month = Number(report[2])
+
+    if (method === 'GET') {
+      const view = await loadReport(db, assemblyId, year, month)
+      return view
+        ? json(view)
+        : json({ error: 'No report has been built for that month yet.' }, 404)
+    }
+    if (method === 'POST') {
+      const view = await ensureReport(db, assemblyId, year, month, ctx.actor)
+      return view ? json(view, 201) : json({ error: 'No such month' }, 404)
+    }
+  }
+
+  const reportAction = /^report\/(\d+)\/(\d+)\/(cutoff|finalize|present|unlock)$/.exec(path)
+  if (reportAction && method === 'POST') {
+    const year = Number(reportAction[1])
+    const month = Number(reportAction[2])
+    const action = reportAction[3]
+    const missing = json({ error: 'No report has been built for that month yet.' }, 404)
+
+    if (action === 'cutoff') {
+      const body = (await request.json()) as { start?: string; end?: string }
+      const view = await setCutoff(
+        db, assemblyId, year, month,
+        required(body.start, 'start'),
+        required(body.end, 'end'),
+        ctx.actor,
+      )
+      return view ? json(view) : missing
+    }
+
+    const run =
+      action === 'finalize' ? finalizeReport
+      : action === 'present' ? presentReport
+      : unlockReport
+    const view = await run(db, assemblyId, year, month, ctx.actor, ctx.now)
+    return view ? json(view) : missing
+  }
+
+  // ── the year summary ───────────────────────────────────────────────────
+  const summary = /^summary\/(\d+|current)$/.exec(path)
+  if (summary && method === 'GET') {
+    const resolved =
+      summary[1] === 'current' ? bahaiYearFor(ctx.today) : Number(summary[1])
+    const view = await loadYearSummary(db, assemblyId, resolved)
+    return view ? json(view) : json({ error: 'No such assembly' }, 404)
   }
 
   // ── choices for the entry and categorisation forms ─────────────────────

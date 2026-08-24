@@ -6,6 +6,7 @@ import Placeholder from './pages/Placeholder'
 import LedgerPage, { LedgerLayout } from './pages/LedgerPage'
 import ImportPage from './pages/ImportPage'
 import CashJournalPage from './pages/CashJournalPage'
+import YearSummaryPage from './pages/YearSummaryPage'
 
 /**
  * The nav is the six destinations from the source design. Those not yet built
@@ -17,6 +18,7 @@ export default function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<YearDashboard />} />
+        <Route path="report/:year" element={<YearSummaryPage />} />
         <Route path="report/:year/:month" element={<FeastReportPage />} />
         <Route path="ledger" element={<LedgerLayout />}>
           <Route index element={<LedgerPage />} />

@@ -7,7 +7,7 @@
  * could disagree with the audit trail.
  */
 
-import type { ApiError, ReportView, YearView } from '../shared/types'
+import type { ApiError, ReportView, YearSummaryView, YearView } from '../shared/types'
 import type { ImportPreview } from '../server/repo/import'
 import type {
   CashJournal,
@@ -75,6 +75,9 @@ export const fetchYear = (bahaiYear: number) => call<YearView>(`/api/year/${baha
 export const fetchReport = (bahaiYear: number, monthNumber: number) =>
   call<ReportView>(`/api/report/${bahaiYear}/${monthNumber}`)
 
+export const fetchYearSummary = (bahaiYear: number | 'current' = 'current') =>
+  call<YearSummaryView>(`/api/summary/${bahaiYear}`)
+
 export interface LedgerQuery {
   year?: number | 'current'
   month?: number
@@ -129,6 +132,29 @@ export const commitImport = (body: {
   '/api/import/commit',
   body,
 )
+
+/** Start a draft report for a month, or return the one already there. */
+export const startReport = (bahaiYear: number, monthNumber: number) =>
+  post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}`, {})
+
+export const setReportCutoff = (
+  bahaiYear: number,
+  monthNumber: number,
+  start: string,
+  end: string,
+) => post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}/cutoff`, { start, end })
+
+/** Close the books: freeze the figures and lock the period. */
+export const finalizeReport = (bahaiYear: number, monthNumber: number) =>
+  post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}/finalize`, {})
+
+/** Record that the report was read out at Feast. */
+export const presentReport = (bahaiYear: number, monthNumber: number) =>
+  post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}/present`, {})
+
+/** Reopen closed books. Deliberate, and audited. */
+export const unlockReport = (bahaiYear: number, monthNumber: number) =>
+  post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}/unlock`, {})
 
 export const createTransaction = (body: {
   accountId: string

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { formatMoney, sumCents } from '../lib/money'
 import { setAuditActor, type SqlDatabase } from './db/adapter'
-import { migrate } from './db/migrate'
+import { loadMigrations, migrate } from './db/migrate'
 import { openNodeDatabase, type NodeSqlDatabase } from './db/node-sqlite'
 import { loadYear } from './repo/year'
 import { loadReport } from './repo/report'
@@ -18,7 +18,11 @@ async function freshDatabase(): Promise<NodeSqlDatabase> {
 describe('migrations', () => {
   it('apply once and are idempotent', async () => {
     const db = openNodeDatabase(':memory:')
-    expect(await migrate(db)).toEqual(['0001_core', '0002_import'])
+    // Named from the directory rather than hard-coded, so adding a migration
+    // does not fail a test about the runner.
+    const expected = loadMigrations().map((m) => m.name)
+    expect(expected[0]).toBe('0001_core')
+    expect(await migrate(db)).toEqual(expected)
     expect(await migrate(db)).toEqual([])
     db.close()
   })

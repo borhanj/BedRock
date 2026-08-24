@@ -64,6 +64,9 @@ export interface ReportView {
   /** The reporting window, which may differ from the calendar month. */
   readonly cutoffStart: string
   readonly cutoffEnd: string
+  /** The calendar bounds of the month, for showing how far the cutoff moved. */
+  readonly calendarStart: string
+  readonly calendarEnd: string
   readonly status: ReportStatus
   /** The Feast at which this is presented — the following month. */
   readonly presentedAtMonth: number | null
@@ -72,8 +75,56 @@ export interface ReportView {
   readonly expenses: readonly ReportLineView[]
   readonly remittedCents: number
   readonly closingBreakdown: readonly ReportLineView[]
+  readonly closingCents: number
   readonly contributionCount: number
   readonly householdCount: number
+  readonly finalizedAt: string | null
+  readonly presentedAt: string | null
+  /** Transactions inside the cutoff are locked while the report is closed. */
+  readonly locked: boolean
+  /**
+   * Set when the frozen figures no longer match a live recomputation.
+   *
+   * A finalised report is a statement already made, so it keeps showing what
+   * it said. But if a prior-period correction has since moved the numbers, the
+   * treasurer needs to know — silently serving stale figures, or silently
+   * updating a presented report, are both worse than saying so.
+   */
+  readonly drift: ReportDrift | null
+}
+
+export interface ReportDrift {
+  readonly liveOpeningCents: number
+  readonly liveClosingCents: number
+  readonly liveIncomeCents: number
+  readonly liveExpensesCents: number
+}
+
+export interface YearMonthSummary {
+  readonly monthNumber: number
+  readonly name: string
+  readonly contributionsCents: number
+  readonly expensesCents: number
+  readonly remittedCents: number
+  readonly closingCents: number
+  readonly status: ReportStatus | 'none'
+}
+
+export interface YearSummaryView {
+  readonly bahaiYear: number
+  readonly nawRuz: string
+  readonly yearEnd: string
+  readonly assembly: AssemblyView
+  readonly openingCents: number
+  readonly closingCents: number
+  readonly incomeByFund: readonly ReportLineView[]
+  readonly expensesByCategory: readonly ReportLineView[]
+  readonly remittancesByFund: readonly ReportLineView[]
+  readonly months: readonly YearMonthSummary[]
+  readonly contributionCount: number
+  readonly householdCount: number
+  readonly reportsPresented: number
+  readonly closingBreakdown: readonly ReportLineView[]
 }
 
 export interface ApiError {

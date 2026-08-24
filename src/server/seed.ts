@@ -347,15 +347,30 @@ export async function seed(db: SqlDatabase): Promise<void> {
   // yet read out, which is the state the design illustrates.
   for (let month = 1; month <= 8; month++) {
     const period = periods.find((p) => p.monthNumber === month)!
+    const presented = month <= 7
     await db.run(
-      `INSERT INTO reports (id, assembly_id, bahai_year, month_number, cutoff_start, cutoff_end, status, finalized_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO reports
+         (id, assembly_id, bahai_year, month_number, cutoff_start, cutoff_end,
+          status, finalized_at, finalized_by, presented_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'seed', ?)`,
       [
-        `rep-${SEED_YEAR}-${month}`, ASSEMBLY_ID, SEED_YEAR, month,
+        `rep-${ASSEMBLY_ID}-${SEED_YEAR}-${month}`, ASSEMBLY_ID, SEED_YEAR, month,
         period.startDate, period.endDate,
-        month <= 7 ? 'presented' : 'ready',
+        presented ? 'presented' : 'ready',
         NOW,
+        presented ? NOW : null,
       ],
     )
+
+    // A presented month is closed: its transactions are locked, and reopening
+    // it is an explicit act. Kamál's report is built but not yet read out, so
+    // its rows stay editable.
+    if (presented) {
+      await db.run(
+        `UPDATE transactions SET is_locked = 1
+          WHERE assembly_id = ? AND occurred_on BETWEEN ? AND ?`,
+        [ASSEMBLY_ID, period.startDate, period.endDate],
+      )
+    }
   }
 }

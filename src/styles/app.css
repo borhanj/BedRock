@@ -826,7 +826,9 @@ a {
 
 @media print {
   .bd-topbar,
-  .bd-reportbar {
+  .bd-reportbar,
+  .bd-subnav,
+  .bd-noprint {
     display: none;
   }
 
@@ -1080,5 +1082,91 @@ a {
 
   .bd-field {
     min-width: 100%;
+  }
+}
+
+/* ── report lifecycle and the year summary (Phase 4) ───────────────────── */
+
+/*
+ * The treasurer's controls. Everything marked this way is management chrome,
+ * not the report, so paper gets the report and nothing else.
+ */
+.bd-noprint {
+  /* Visible on screen; removed by the print block at the end of this file. */
+  display: block;
+}
+
+.bd-btn--quiet {
+  color: var(--bd-primary-deep);
+  background: var(--bd-primary-soft);
+}
+
+.bd-btn--quiet:hover {
+  background: var(--bd-accent-pale);
+}
+
+.bd-actions--left {
+  justify-content: flex-start;
+}
+
+.bd-cutoff {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--bd-gap);
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.bd-cutoff__value {
+  margin: 5px 0 0;
+  font: 400 15px var(--bd-font-serif);
+  color: var(--bd-text);
+}
+
+.bd-report__block {
+  margin-top: 38px;
+}
+
+.bd-report__table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font: 400 13px var(--bd-font-sans);
+}
+
+.bd-report__table th {
+  padding: 8px 10px 8px 0;
+  text-align: left;
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bd-report-muted);
+  border-bottom: 1px solid var(--bd-report-rule);
+}
+
+.bd-report__table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid var(--bd-report-track);
+}
+
+.bd-report__table .bd-table__num {
+  font-family: var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-report__status {
+  font-size: 11.5px;
+  color: var(--bd-report-muted);
+}
+
+@media (max-width: 680px) {
+  /* Nineteen rows of six columns does not fit a phone; scroll it. */
+  .bd-report__block {
+    overflow-x: auto;
+  }
+
+  .bd-report__table {
+    min-width: 460px;
   }
 }

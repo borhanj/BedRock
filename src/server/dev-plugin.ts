@@ -63,7 +63,10 @@ export function bedrockDevApi(): Plugin {
               body,
             })
 
-            const now = new Date().toISOString()
+            // Pinned to the seeded timeline, keeping the wall-clock time of
+            // day so writes still order correctly. Otherwise the demo records
+            // a report as presented days before the date it thinks it is.
+            const now = `${SEED_TODAY}T${new Date().toISOString().slice(11)}`
             const response = await handleApi(request, {
               db,
               assemblyId: ASSEMBLY_ID,

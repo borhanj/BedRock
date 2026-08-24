@@ -58,8 +58,12 @@ browser does no arithmetic on money.
 ledger, the cash journal, hand entry, and learned categorisation. Under Ledger: *All
 transactions*, *Cash journal*, *Import a statement*.
 
-Phases 4–7 (report generation, the donor vault, funds and budget, the Audit Package) are not
-built. Their nav destinations name the phase that fills them in.
+**Phase 4 — reports out.** The Feast report lifecycle — build, adjust the cutoff, close the
+books, present at Feast, reopen — plus the year-end summary at `/report/:year` and a print
+path for both.
+
+Phases 5–7 (the donor vault, funds and budget, the Audit Package) are not built. Their nav
+destinations name the phase that fills them in.
 
 ### Running against real Cloudflare
 
@@ -166,6 +170,17 @@ so `@media print` flips the ground to white and keeps the layout.
 the cutoff moves, because a late bank statement is the normal case. `reports.cutoff_start` and
 `cutoff_end` default to the calendar bounds and can be changed without the report losing its
 Feast name.
+
+**A finalised report keeps saying what it said.** Closing the books freezes the figures into a
+snapshot and locks the period's transactions. If a later correction moves the numbers, the
+report still shows what was presented and reports the divergence beside it — quietly rewriting
+a report the community has already heard, and quietly serving stale figures with no warning,
+are both worse than saying so. Reopening a period is a distinct, audited act, and a row
+covered by a second closed report stays locked.
+
+**The year-end summary is computed over the year, not by adding up the reports.** A gift on a
+day no monthly cutoff happened to cover still belongs in the annual figures. Summing the
+reports instead would let money vanish at exactly the moment an auditor is looking.
 
 **Periods are not stored in the database.** The nineteen months are derived from the Naw-Rúz
 table at query time and the daily sums are bucketed in TypeScript. Caching month boundaries in
