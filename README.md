@@ -82,6 +82,42 @@ Then put the returned id in `wrangler.jsonc`, apply the migrations with
 `npx wrangler d1 migrations apply bedrock`, and read the two blockers listed at the bottom of
 that file — an Access policy and JWT verification — before the Worker is reachable.
 
+## Picking this up
+
+Everything below is current as of the last commit. `npm test` should show **156 passing**;
+if it does not, start there rather than with new work.
+
+### Next, in order
+
+**Phase 6 — funds, remittance, budget, reconciliation.** Per-fund sub-ledgers and a remittance
+screen (the schema and the data already exist; the Funds nav destination is still a
+placeholder). Budget entry per category per Bahá'í year, with next year's draft proposed from
+this year's actuals for the Assembly to approve. Bank reconciliation against a statement's
+ending balance — this is also what restores the dashboard's fourth worklist row, which was
+deliberately left out rather than report a confident zero for a check that has never run.
+
+**Phase 7 — audit and continuity.** The one-click Audit Package, encrypted backup to an
+Assembly-owned Google Drive folder, and the treasurer handoff export.
+
+### Two things that block real use
+
+**`worker.ts` `identify()` is attribution, not authentication.** It reads the email header
+Cloudflare Access forwards, which anyone able to reach the Worker directly can simply set
+themselves. Verifying `Cf-Access-Jwt-Assertion` against the team's public keys, and locking
+ingress to Access, are both required before this is exposed. This matters more since Phase 5:
+the donor PIN travels in request bodies and relies on Access terminating in front.
+
+**Nothing is deployed.** wrangler is not a dependency yet; see *Running against real
+Cloudflare* above for the four commands that change that.
+
+### Smaller things left undone
+
+- A per-receipt printable document. The log prints with the page, but there is no single
+  receipt to hand someone. Naturally folds into Phase 7.
+- Receipt images cannot be uploaded. The dashboard counts expenses missing one and the ledger
+  flags them, but attaching needs an R2 binding.
+- The dev database is in-memory, so a restart resets it. `BEDROCK_DEV_DB=<path>` keeps it.
+
 ## Things worth knowing before you build on this
 
 **The Naw-Rúz table is the source of truth, and it is reconciled.**
