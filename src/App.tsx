@@ -10,6 +10,7 @@ import YearSummaryPage from './pages/YearSummaryPage'
 import ReceiptsPage from './pages/ReceiptsPage'
 import FundsPage, { FundsLayout, FundLedgerPage } from './pages/FundsPage'
 import RemittancePage from './pages/RemittancePage'
+import BudgetPage from './pages/BudgetPage'
 
 /**
  * The nav is the six destinations from the source design. Those not yet built
@@ -34,15 +35,7 @@ export default function App() {
           <Route path=":key" element={<FundLedgerPage />} />
         </Route>
         <Route path="receipts" element={<ReceiptsPage />} />
-        <Route
-          path="budget"
-          element={
-            <Placeholder
-              title="Budget"
-              body="Budget against actual by category, and a draft next-year budget proposed from this year's figures for the Assembly to approve. Phase 6."
-            />
-          }
-        />
+        <Route path="budget" element={<BudgetPage />} />
         <Route
           path="audit"
           element={

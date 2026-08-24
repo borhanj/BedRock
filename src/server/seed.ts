@@ -29,10 +29,12 @@ const FUNDS = [
   { id: 'fund-continental', key: 'continental', label: 'Continental Fund', passthrough: 1, order: 2 },
 ]
 
+// Each income category names the fund it feeds, so the budget can keep money
+// owed upward out of the Assembly's surplus.
 const INCOME_CATEGORIES = [
-  { id: 'cat-inc-local', label: 'Local Fund contributions' },
-  { id: 'cat-inc-national', label: 'National Fund contributions' },
-  { id: 'cat-inc-continental', label: 'Continental Fund contributions' },
+  { id: 'cat-inc-local', label: 'Local Fund contributions', fund: 'fund-local' },
+  { id: 'cat-inc-national', label: 'National Fund contributions', fund: 'fund-national' },
+  { id: 'cat-inc-continental', label: 'Continental Fund contributions', fund: 'fund-continental' },
 ]
 
 const EXPENSE_CATEGORIES = [
@@ -106,6 +108,34 @@ const UNSORTED_PAYEES = [
   'MONTHLY ACCOUNT FEE',
 ]
 
+/**
+ * The budget the Assembly adopted before the year began. Cents.
+ *
+ * Round figures, because a body of nine people votes on round figures. Two are
+ * deliberately tight against what the year actually did — deepening materials
+ * is already over, and travel is nearly spent less than half way through — so
+ * the variance and pace marks on the budget screen have something to say.
+ */
+const BUDGET = {
+  approvedOn: '2026-03-08',
+  note: 'Adopted by the Assembly at its meeting of 8 March 2026.',
+  lines: [
+    ['cat-inc-local', 1_700_000],
+    ['cat-inc-national', 300_000],
+    ['cat-inc-continental', 50_000],
+    ['cat-rent', 665_000],
+    ['cat-hospitality', 200_000],
+    ['cat-utilities', 170_000],
+    ['cat-children', 150_000],
+    ['cat-holyday', 60_000],
+    ['cat-deepening', 15_000],
+    ['cat-proclamation', 40_000],
+    ['cat-travel', 30_000],
+    ['cat-supplies', 35_000],
+    ['cat-bank', 16_000],
+  ] as Array<[string, number]>,
+}
+
 /** Forwarded upward. Cents. */
 const REMITTANCES = [
   { month: 3, fund: 'fund-national', cents: 45_000, reference: 'NF-2026-0417' },
@@ -178,9 +208,9 @@ export async function seed(db: SqlDatabase): Promise<void> {
 
   for (const [i, c] of INCOME_CATEGORIES.entries()) {
     await db.run(
-      `INSERT INTO categories (id, assembly_id, label, kind, sort_order)
-       VALUES (?, ?, ?, 'income', ?)`,
-      [c.id, ASSEMBLY_ID, c.label, i],
+      `INSERT INTO categories (id, assembly_id, label, kind, sort_order, fund_id)
+       VALUES (?, ?, ?, 'income', ?, ?)`,
+      [c.id, ASSEMBLY_ID, c.label, i, c.fund],
     )
   }
   for (const [i, c] of EXPENSE_CATEGORIES.entries()) {
@@ -346,6 +376,26 @@ export async function seed(db: SqlDatabase): Promise<void> {
       [nextId('rem'), ASSEMBLY_ID, r.fund, id, date, r.cents, r.reference],
     )
   }
+
+  // ── the budget ───────────────────────────────────────────────────────────
+  //
+  // Lines first, then the header. An approved year refuses new lines — that is
+  // the point of the trigger — so the order here is the same order the app
+  // itself has to follow.
+  for (const [category, cents] of BUDGET.lines) {
+    await db.run(
+      `INSERT INTO budgets
+         (id, assembly_id, bahai_year, category_id, amount_cents, note, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, ?, ?)`,
+      [`bud-${SEED_YEAR}-${category}`, ASSEMBLY_ID, SEED_YEAR, category, cents, NOW, NOW],
+    )
+  }
+  await db.run(
+    `INSERT INTO budget_years
+       (assembly_id, bahai_year, status, approved_on, approved_by, note, created_at, updated_at)
+     VALUES (?, ?, 'approved', ?, NULL, ?, ?, ?)`,
+    [ASSEMBLY_ID, SEED_YEAR, BUDGET.approvedOn, BUDGET.note, NOW, NOW],
+  )
 
   // ── reports ──────────────────────────────────────────────────────────────
   //

@@ -39,6 +39,14 @@ import {
   recordRemittance,
   RemittanceError,
 } from './repo/funds'
+import {
+  approveBudget,
+  BudgetError,
+  loadBudget,
+  proposeBudget,
+  reopenBudget,
+  setBudgetLine,
+} from './repo/budget'
 import { forgetRule, listRules } from './repo/rules'
 import {
   changeSecret,
@@ -84,6 +92,20 @@ function json(body: unknown, status = 200): Response {
 
 class BadRequest extends Error {}
 
+/**
+ * "current" and "next" resolve against the server's today.
+ *
+ * The budget screen exists mostly to draft the year that has not started yet,
+ * and which Baháʼí year that is depends on the Naw-Rúz table — so the browser
+ * asks for "next" rather than doing the arithmetic itself and being wrong for
+ * the few hours around the equinox.
+ */
+function budgetYear(token: string, today: string): number {
+  if (token === 'current') return bahaiYearFor(today)
+  if (token === 'next') return bahaiYearFor(today) + 1
+  return Number(token)
+}
+
 function required<T>(value: T | undefined | null, field: string): T {
   if (value === undefined || value === null || value === '') {
     throw new BadRequest(`Missing "${field}"`)
@@ -121,7 +143,8 @@ export async function handleApi(
     if (
       error instanceof ReportStateError ||
       error instanceof ReceiptError ||
-      error instanceof RemittanceError
+      error instanceof RemittanceError ||
+      error instanceof BudgetError
     ) {
       return json({ error: error.message }, 409)
     }
@@ -251,6 +274,56 @@ async function route(
       ),
       201,
     )
+  }
+
+  // ── the budget ─────────────────────────────────────────────────────────
+  const budget = /^budget\/(\d+|current|next)$/.exec(path)
+  if (budget && method === 'GET') {
+    return json(await loadBudget(db, assemblyId, budgetYear(budget[1], ctx.today), ctx.today))
+  }
+
+  const budgetLine = /^budget\/(\d+|current|next)\/line$/.exec(path)
+  if (budgetLine && (method === 'PUT' || method === 'POST')) {
+    const body = (await request.json()) as {
+      categoryId?: string
+      amountCents?: number | null
+      note?: string | null
+    }
+    const resolved = budgetYear(budgetLine[1], ctx.today)
+    // null clears the line; 0 records a decision to spend nothing. They are
+    // different statements, so undefined is rejected rather than guessed at.
+    if (body.amountCents === undefined) throw new BadRequest('Missing "amountCents"')
+    await setBudgetLine(
+      db, assemblyId, resolved,
+      required(body.categoryId, 'categoryId'),
+      body.amountCents === null ? null : Number(body.amountCents),
+      body.note ?? null,
+      ctx.actor, ctx.now,
+    )
+    return json(await loadBudget(db, assemblyId, resolved, ctx.today))
+  }
+
+  const budgetAction = /^budget\/(\d+|current|next)\/(propose|approve|reopen)$/.exec(path)
+  if (budgetAction && method === 'POST') {
+    const resolved = budgetYear(budgetAction[1], ctx.today)
+    const body = (await request.json().catch(() => ({}))) as {
+      fromYear?: number
+      note?: string | null
+    }
+    if (budgetAction[2] === 'propose') {
+      await proposeBudget(
+        db, assemblyId, resolved,
+        body.fromYear ? Number(body.fromYear) : resolved - 1,
+        ctx.actor, ctx.now, ctx.today,
+      )
+    } else if (budgetAction[2] === 'approve') {
+      await approveBudget(
+        db, assemblyId, resolved, body.note ?? null, ctx.actor, ctx.now, ctx.today,
+      )
+    } else {
+      await reopenBudget(db, assemblyId, resolved, ctx.actor, ctx.now)
+    }
+    return json(await loadBudget(db, assemblyId, resolved, ctx.today))
   }
 
   // ── choices for the entry and categorisation forms ─────────────────────

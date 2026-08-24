@@ -242,6 +242,17 @@ a {
   color: var(--bd-report-text);
 }
 
+/* The figure a planned one is measured against, kept subordinate to it. */
+.bd-stat__beside {
+  margin-top: 2px;
+  font: 400 11px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-stat--inverse .bd-stat__beside {
+  color: var(--bd-report-muted);
+}
+
 /* ── cards ─────────────────────────────────────────────────────────────── */
 
 .bd-card {
@@ -1002,6 +1013,50 @@ a {
   color: var(--bd-muted);
 }
 
+/* A money field inside a table cell: narrow, and right-aligned like the
+   figures above and below it. */
+.bd-input--money {
+  width: 8.5ch;
+  text-align: right;
+  font-family: var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── budget pace ────────────────────────────────────────────────────────
+   How far a line has gone, with a tick at where an even pace through the
+   year would put it. The tick is the whole point: half a budget spent means
+   one thing in the second month and another in the seventeenth. */
+
+.bd-pace {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 90px;
+  height: 8px;
+  background: var(--bd-surface-sunk);
+  border: 1px solid var(--bd-border);
+}
+
+.bd-pace__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--bd-primary);
+}
+
+/* Past the budget. Clay rather than teal, and the only red flag on the row. */
+.bd-pace__fill--over {
+  background: var(--bd-expense);
+}
+
+.bd-pace__tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--bd-ink);
+}
+
 /* The line a table has to foot to. Set apart by a rule and weight rather than
    a tint — it is a conclusion, not a warning. */
 .bd-table tfoot td {
@@ -1037,6 +1092,18 @@ a {
 
 .bd-amount--out {
   color: var(--bd-text);
+}
+
+/* Budget variance, coloured against pace rather than against the whole year.
+   Amber for off-pace in either direction, clay only once a line has spent its
+   whole year's figure. Everything else stays ink: being under budget in the
+   fifth month is the normal state, not an achievement. */
+.bd-amount--pace {
+  color: var(--bd-attention);
+}
+
+.bd-amount--over {
+  color: var(--bd-expense-text);
 }
 
 .bd-running {

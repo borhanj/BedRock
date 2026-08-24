@@ -29,11 +29,14 @@ import type {
   FundsView,
   RemittanceView,
 } from '../server/repo/funds'
+import type { BudgetLineView, BudgetView } from '../server/repo/budget'
 
 export type {
   FundsView,
   FundLedgerView,
   RemittanceView,
+  BudgetView,
+  BudgetLineView,
   ReceiptView,
   ReceiptLogSummary,
   UnreceiptedGift,
@@ -118,6 +121,31 @@ export function fetchLedger(query: LedgerQuery = {}): Promise<LedgerRow[]> {
 
 export const fetchCashJournal = (year: number | 'current' = 'current') =>
   call<CashJournal>(`/api/cash/${year}`)
+
+/** "next" is resolved by the server, which owns the Naw-Rúz table. */
+export type BudgetYear = number | 'current' | 'next'
+
+export const fetchBudget = (year: BudgetYear = 'current') =>
+  call<BudgetView>(`/api/budget/${year}`)
+
+/** null clears the line; 0 records a decision to spend nothing. */
+export const setBudgetLine = (
+  year: BudgetYear,
+  body: { categoryId: string; amountCents: number | null; note: string | null },
+) => call<BudgetView>(`/api/budget/${year}/line`, {
+  method: 'PUT',
+  body: JSON.stringify(body),
+})
+
+/** Draft a year's figures from another year's actuals, for the Assembly to weigh. */
+export const proposeBudget = (year: BudgetYear, fromYear?: number) =>
+  post<BudgetView>(`/api/budget/${year}/propose`, { fromYear })
+
+export const approveBudget = (year: BudgetYear, note: string | null) =>
+  post<BudgetView>(`/api/budget/${year}/approve`, { note })
+
+export const reopenBudget = (year: BudgetYear) =>
+  post<BudgetView>(`/api/budget/${year}/reopen`, {})
 
 export const fetchFunds = (year: number | 'current' = 'current') =>
   call<FundsView>(`/api/funds/${year}`)
