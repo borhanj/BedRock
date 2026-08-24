@@ -74,8 +74,9 @@
   --bd-report-outflow: #e8a08c;
 
   /* ── type ───────────────────────────────────────────────────────────── */
-  --bd-font-sans: Karla, system-ui, -apple-system, Segoe UI, sans-serif;
-  --bd-font-serif: Spectral, Georgia, serif;
+  /* Translit leads both stacks; see the @font-face note below. */
+  --bd-font-sans: Translit, Karla, system-ui, -apple-system, Segoe UI, sans-serif;
+  --bd-font-serif: Translit, Spectral, Georgia, serif;
 
   /* ── spacing and shape ──────────────────────────────────────────────── */
   --bd-gap-xs: 6px;
@@ -86,6 +87,28 @@
   --bd-shadow: 0 1px 3px rgba(13, 27, 42, 0.06);
   --bd-page-max: 1240px;
   --bd-report-max: 940px;
+}
+
+/*
+ * Bahá'í transliteration marks.
+ *
+ * The names of the months carry ʿayn (U+02BF) and alif (U+02BC), and Bedrock
+ * shows them constantly. Neither display face handles them well: Karla has no
+ * ʿayn at all and falls through to whatever the system offers, and Spectral's
+ * ʿayn has an advance of half an em for a mark barely a fifth of that wide,
+ * which opens a visible gap — "ʿ Izzat" instead of "ʿIzzat" — at heading sizes.
+ *
+ * unicode-range confines this face to those few codepoints, so it supplies the
+ * marks and nothing else: every other character still comes from Spectral or
+ * Karla exactly as before. Listing it first in the stack is what makes it win
+ * for the marks; the range is what stops it winning for anything else.
+ */
+@font-face {
+  font-family: Translit;
+  src: local('Charter'), local('Palatino Linotype'), local('Georgia'),
+    local('Times New Roman');
+  unicode-range: U+02BB-02BF, U+02C8, U+2018, U+2019;
+  font-display: swap;
 }
 
 /*

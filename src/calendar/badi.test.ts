@@ -21,7 +21,8 @@ import {
   LAST_TABULATED_YEAR,
   NAW_RUZ_TABLE,
   isTableVerified,
-  assertVerifiedTable,
+  assertVerifiedYears,
+  unverifiedYearsIn,
 } from './naw-ruz-table'
 
 describe('the Naw-Rúz table', () => {
@@ -39,11 +40,38 @@ describe('the Naw-Rúz table', () => {
     }
   })
 
-  it('is still flagged unverified, and blocks audit exports while it is', () => {
-    // Flip these expectations once the table is reconciled against the
-    // official published dates. The failure is the reminder.
+  it('covers the full official range of 172-221 B.E.', () => {
+    expect(FIRST_TABULATED_YEAR).toBe(172)
+    expect(LAST_TABULATED_YEAR).toBe(221)
+    expect(NAW_RUZ_TABLE).toHaveLength(50)
+  })
+
+  it('lets a report run for a corroborated year', () => {
+    // The years an Assembly is actually using today are agreed by more than
+    // one independent published source.
+    expect(() => assertVerifiedYears(183, 183)).not.toThrow()
+    expect(() => assertVerifiedYears(172, 190)).not.toThrow()
+  })
+
+  it('still blocks the years that rest on a single source', () => {
+    // Flip these once the tail is read off the official document. The
+    // failure is the reminder.
     expect(isTableVerified()).toBe(false)
-    expect(() => assertVerifiedTable()).toThrow(/not been verified/)
+    expect(unverifiedYearsIn(172, 221)).toEqual(
+      Array.from({ length: 31 }, (_, i) => 191 + i),
+    )
+    expect(() => assertVerifiedYears(183, 200)).toThrow(/single published source/)
+  })
+
+  it('agrees with the published dates on the years that moved', () => {
+    // 21 March rather than 20 March. Cross-checked against Wikipedia's
+    // 2024-2031 table, which lists exactly 2026, 2027 and 2031.
+    const marchTwentyFirst = NAW_RUZ_TABLE.filter((e) => e.date.endsWith('-03-21')).map(
+      (e) => e.year,
+    )
+    expect(marchTwentyFirst).toEqual([
+      172, 175, 176, 179, 180, 183, 184, 188, 192, 196, 200, 204, 208, 212,
+    ])
   })
 })
 
