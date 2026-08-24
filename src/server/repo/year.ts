@@ -8,9 +8,9 @@
  */
 
 import { monthsForYear, nawRuz, toDayIndex } from '../../calendar/badi'
+import { loadFundBalances } from './funds'
 import type {
   AttentionView,
-  FundBalanceView,
   MonthActivityView,
   MonthStatus,
   YearView,
@@ -168,73 +168,6 @@ export async function loadYear(
     funds,
     attention,
   }
-}
-
-/**
- * Where the money sits, as a partition of what is on hand.
- *
- * The four figures have to sum to the on-hand balance or the card is lying, so
- * they are built as a partition rather than four independent queries:
- *
- *   passthrough funds — contributions in, minus what has been forwarded up
- *   cash box          — the physical cash account
- *   Local Fund        — the residual, i.e. what the Assembly may actually spend
- *
- * Treating the Local Fund as the remainder is also the honest reading: it is
- * whatever is left once other institutions' money and the cash tin are set
- * aside.
- */
-async function loadFundBalances(
-  db: SqlDatabase,
-  assemblyId: string,
-  onHandCents: number,
-): Promise<FundBalanceView[]> {
-  const rows = await db.all<{
-    key: string
-    label: string
-    is_passthrough: number
-    balance_cents: number
-  }>(
-    `SELECT f.key, f.label, f.is_passthrough,
-            COALESCE((SELECT SUM(c.amount_cents) FROM contributions c WHERE c.fund_id = f.id), 0)
-          - COALESCE((SELECT SUM(r.amount_cents) FROM remittances r WHERE r.fund_id = f.id), 0)
-            AS balance_cents
-       FROM funds f
-      WHERE f.assembly_id = ?
-      ORDER BY f.sort_order`,
-    [assemblyId],
-  )
-
-  const cash = await db.get<{ cents: number }>(
-    `SELECT COALESCE(SUM(a.opening_balance_cents), 0)
-          + COALESCE((SELECT SUM(t.amount_cents) FROM transactions t
-                       JOIN accounts ca ON ca.id = t.account_id
-                      WHERE ca.assembly_id = ? AND ca.kind = 'cash'), 0) AS cents
-       FROM accounts a
-      WHERE a.assembly_id = ? AND a.kind = 'cash'`,
-    [assemblyId, assemblyId],
-  )
-  const cashCents = cash?.cents ?? 0
-
-  const passthrough = rows.filter((r) => r.is_passthrough === 1)
-  const passthroughTotal = passthrough.reduce((sum, r) => sum + r.balance_cents, 0)
-  const localLabel = rows.find((r) => r.is_passthrough === 0)?.label ?? 'Local Fund'
-
-  return [
-    {
-      key: 'local',
-      label: localLabel,
-      balanceCents: onHandCents - passthroughTotal - cashCents,
-      isPassthrough: false,
-    },
-    ...passthrough.map((r) => ({
-      key: r.key,
-      label: r.label,
-      balanceCents: r.balance_cents,
-      isPassthrough: true,
-    })),
-    { key: 'cash', label: 'Cash box', balanceCents: cashCents, isPassthrough: false },
-  ]
 }
 
 /**

@@ -1002,6 +1002,14 @@ a {
   color: var(--bd-muted);
 }
 
+/* The line a table has to foot to. Set apart by a rule and weight rather than
+   a tint — it is a conclusion, not a warning. */
+.bd-table tfoot td {
+  border-top: 2px solid var(--bd-border-strong);
+  padding-top: 12px;
+  font-weight: 600;
+}
+
 /* Rows still needing a decision are marked on the leading edge rather than
    tinted, so a long list of them does not read as an error state. */
 .bd-tr--todo td:first-child {

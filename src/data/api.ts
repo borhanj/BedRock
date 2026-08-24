@@ -24,8 +24,16 @@ import type {
   UnreceiptedGift,
 } from '../server/repo/receipts'
 import type { AccessLogEntry, DonorView, VaultStatus } from '../server/repo/donors'
+import type {
+  FundLedgerView,
+  FundsView,
+  RemittanceView,
+} from '../server/repo/funds'
 
 export type {
+  FundsView,
+  FundLedgerView,
+  RemittanceView,
   ReceiptView,
   ReceiptLogSummary,
   UnreceiptedGift,
@@ -111,6 +119,12 @@ export function fetchLedger(query: LedgerQuery = {}): Promise<LedgerRow[]> {
 export const fetchCashJournal = (year: number | 'current' = 'current') =>
   call<CashJournal>(`/api/cash/${year}`)
 
+export const fetchFunds = (year: number | 'current' = 'current') =>
+  call<FundsView>(`/api/funds/${year}`)
+
+export const fetchFundLedger = (fundKey: string, year: number | 'current' = 'current') =>
+  call<FundLedgerView>(`/api/funds/${year}/${encodeURIComponent(fundKey)}`)
+
 export interface Choices {
   accounts: AccountView[]
   categories: CategoryView[]
@@ -167,6 +181,20 @@ export const presentReport = (bahaiYear: number, monthNumber: number) =>
 /** Reopen closed books. Deliberate, and audited. */
 export const unlockReport = (bahaiYear: number, monthNumber: number) =>
   post<ReportView>(`/api/report/${bahaiYear}/${monthNumber}/unlock`, {})
+
+/**
+ * Record money forwarded to another institution's fund.
+ *
+ * The server writes both the bank withdrawal and the remittance row; there is
+ * no way to record one without the other.
+ */
+export const recordRemittance = (body: {
+  fundKey: string
+  accountId: string
+  sentOn: string
+  amountCents: number
+  reference: string | null
+}) => post<RemittanceView>('/api/remittances', body)
 
 // ── the donor vault ──────────────────────────────────────────────────────────
 //

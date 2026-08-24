@@ -33,6 +33,12 @@ import {
   loadChoices,
   loadLedger,
 } from './repo/ledger'
+import {
+  loadFundLedger,
+  loadFunds,
+  recordRemittance,
+  RemittanceError,
+} from './repo/funds'
 import { forgetRule, listRules } from './repo/rules'
 import {
   changeSecret,
@@ -110,8 +116,13 @@ export async function handleApi(
       return json({ error: error.message }, 400)
     }
     // Closing, presenting and reopening a report follow an order. Asking for a
-    // step out of turn is a conflict, not a crash.
-    if (error instanceof ReportStateError || error instanceof ReceiptError) {
+    // step out of turn is a conflict, not a crash — and so is forwarding more
+    // than a fund holds.
+    if (
+      error instanceof ReportStateError ||
+      error instanceof ReceiptError ||
+      error instanceof RemittanceError
+    ) {
       return json({ error: error.message }, 409)
     }
     // A wrong or missing PIN. 403 rather than 401: the treasurer IS signed in
@@ -199,6 +210,47 @@ async function route(
       summary[1] === 'current' ? bahaiYearFor(ctx.today) : Number(summary[1])
     const view = await loadYearSummary(db, assemblyId, resolved)
     return view ? json(view) : json({ error: 'No such assembly' }, 404)
+  }
+
+  // ── funds and remittance ───────────────────────────────────────────────
+  const funds = /^funds\/(\d+|current)$/.exec(path)
+  if (funds && method === 'GET') {
+    const resolved = funds[1] === 'current' ? bahaiYearFor(ctx.today) : Number(funds[1])
+    return json(await loadFunds(db, assemblyId, resolved))
+  }
+
+  const fundLedger = /^funds\/(\d+|current)\/([^/]+)$/.exec(path)
+  if (fundLedger && method === 'GET') {
+    const resolved =
+      fundLedger[1] === 'current' ? bahaiYearFor(ctx.today) : Number(fundLedger[1])
+    const view = await loadFundLedger(
+      db, assemblyId, decodeURIComponent(fundLedger[2]), resolved,
+    )
+    return view ? json(view) : json({ error: 'No such fund' }, 404)
+  }
+
+  if (path === 'remittances' && method === 'POST') {
+    const body = (await request.json()) as {
+      fundKey?: string
+      accountId?: string
+      sentOn?: string
+      amountCents?: number
+      reference?: string | null
+    }
+    return json(
+      await recordRemittance(
+        db, assemblyId,
+        {
+          fundKey: required(body.fundKey, 'fundKey'),
+          accountId: required(body.accountId, 'accountId'),
+          sentOn: body.sentOn || ctx.today,
+          amountCents: Number(required(body.amountCents, 'amountCents')),
+          reference: body.reference || null,
+        },
+        ctx.actor, ctx.now,
+      ),
+      201,
+    )
   }
 
   // ── choices for the entry and categorisation forms ─────────────────────

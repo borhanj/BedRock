@@ -8,6 +8,8 @@ import ImportPage from './pages/ImportPage'
 import CashJournalPage from './pages/CashJournalPage'
 import YearSummaryPage from './pages/YearSummaryPage'
 import ReceiptsPage from './pages/ReceiptsPage'
+import FundsPage, { FundsLayout, FundLedgerPage } from './pages/FundsPage'
+import RemittancePage from './pages/RemittancePage'
 
 /**
  * The nav is the six destinations from the source design. Those not yet built
@@ -26,15 +28,11 @@ export default function App() {
           <Route path="cash" element={<CashJournalPage />} />
           <Route path="import" element={<ImportPage />} />
         </Route>
-        <Route
-          path="funds"
-          element={
-            <Placeholder
-              title="Funds"
-              body="Sub-ledgers for the Local, National and Continental Funds, and a record of what has been forwarded upward. Phase 6."
-            />
-          }
-        />
+        <Route path="funds" element={<FundsLayout />}>
+          <Route index element={<FundsPage />} />
+          <Route path="forward" element={<RemittancePage />} />
+          <Route path=":key" element={<FundLedgerPage />} />
+        </Route>
         <Route path="receipts" element={<ReceiptsPage />} />
         <Route
           path="budget"
