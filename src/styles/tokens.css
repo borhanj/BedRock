@@ -1,0 +1,106 @@
+/*
+ * Bedrock design tokens — "Ink & teal".
+ *
+ * Names are SEMANTIC, never colour names. The source mockup shipped in a brown
+ * parchment palette and was re-skinned to this one; that swap only stayed cheap
+ * because nothing downstream says "brown". Keep it that way: a component may
+ * reference --bd-expense, never --bd-clay.
+ *
+ * CONTRAST — measured against #ffffff, WCAG 2.1:
+ *   #0e8f8f  3.93:1  fills, charts and large figures only — NOT body text
+ *   #c25a44  4.34:1  fills, charts and large figures only — NOT body text
+ *   #0a7373  5.66:1  safe for body text, and for solid fills under white text
+ *   #a8492f  5.74:1  safe for body text
+ * Hence the paired -text tokens. Small text must use those, never the base
+ * hue. scripts/check-contrast.mjs enforces this; npm run check:contrast.
+ */
+
+:root {
+  /* ── ground ─────────────────────────────────────────────────────────── */
+  --bd-ink: #0d1b2a;
+  --bd-canvas: #f2f6f7;
+  --bd-surface: #ffffff;
+  --bd-surface-sunk: #f2f6f7;
+  --bd-border: rgba(13, 27, 42, 0.12);
+  --bd-border-strong: rgba(13, 27, 42, 0.24);
+
+  /* ── text ───────────────────────────────────────────────────────────── */
+  --bd-text: #0d1b2a;
+  /* The only secondary text colour. Passes AA on both --bd-surface and
+     --bd-canvas; there is deliberately no lighter text token, because every
+     label in this UI is small enough to need the full 4.5:1. */
+  --bd-muted: #5f6e7a;
+
+  /* ── brand / semantic hues ──────────────────────────────────────────── */
+  /* Fills, chart series and large figures only — 3.9:1 is below body-text AA. */
+  --bd-primary: #0e8f8f;
+  /* Small text, links, AND any solid fill carrying white text. Both need 4.5:1. */
+  --bd-primary-deep: #0a7373;
+  --bd-primary-deeper: #085c5c;
+  --bd-primary-soft: #e2f1f1;
+  --bd-accent: #6bbfbf;
+  --bd-accent-pale: #a5d5d5;
+
+  --bd-income: #0e8f8f;
+  --bd-income-text: #0a7373;
+  --bd-income-deep: #0a7373;
+  --bd-expense: #c25a44;
+  --bd-expense-text: #a8492f;
+  --bd-expense-soft: #f9edea;
+  --bd-positive: #2f7d5f;
+  --bd-attention: #96590f;
+
+  /* ── the nineteen-months chart ──────────────────────────────────────── */
+  --bd-month-closed: #6bbfbf;
+  --bd-month-ready: #0e8f8f;
+  --bd-month-current: #cfe8e8;
+  --bd-month-current-edge: #0e8f8f;
+  --bd-month-future: rgba(13, 27, 42, 0.1);
+  --bd-month-empty: rgba(13, 27, 42, 0.28);
+  --bd-intercalary-hatch: repeating-linear-gradient(
+    135deg,
+    rgba(13, 27, 42, 0.07) 0 3px,
+    transparent 3px 6px
+  );
+
+  /* ── the Feast report, which is inverted ────────────────────────────── */
+  --bd-report-bg: #0d1b2a;
+  --bd-report-text: #f2f6f7;
+  --bd-report-muted: rgba(242, 246, 247, 0.6);
+  --bd-report-rule: rgba(242, 246, 247, 0.2);
+  --bd-report-track: rgba(242, 246, 247, 0.12);
+  --bd-report-accent: #6bbfbf;
+  --bd-report-inflow: #7fd4c4;
+  --bd-report-outflow: #e8a08c;
+
+  /* ── type ───────────────────────────────────────────────────────────── */
+  --bd-font-sans: Karla, system-ui, -apple-system, Segoe UI, sans-serif;
+  --bd-font-serif: Spectral, Georgia, serif;
+
+  /* ── spacing and shape ──────────────────────────────────────────────── */
+  --bd-gap-xs: 6px;
+  --bd-gap-sm: 10px;
+  --bd-gap: 18px;
+  --bd-gap-lg: 26px;
+  --bd-radius: 2px;
+  --bd-shadow: 0 1px 3px rgba(13, 27, 42, 0.06);
+  --bd-page-max: 1240px;
+  --bd-report-max: 940px;
+}
+
+/*
+ * PRINT — the report is designed dark for projection at Feast, which is wrong
+ * for paper: it drinks toner and reads poorly. Same layout, inverted ground.
+ */
+@media print {
+  :root {
+    --bd-report-bg: #ffffff;
+    --bd-report-text: #0d1b2a;
+    --bd-report-muted: #55606b;
+    --bd-report-rule: rgba(13, 27, 42, 0.28);
+    --bd-report-track: rgba(13, 27, 42, 0.1);
+    --bd-report-accent: #0a7373;
+    --bd-report-inflow: #0a7373;
+    --bd-report-outflow: #a8492f;
+  }
+}

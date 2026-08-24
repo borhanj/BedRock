@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bedrock",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-01",
+
+  // The built SPA. The Worker handles /api/* and hands everything else here.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bedrock",
+      // Filled in by `wrangler d1 create bedrock`.
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+    }
+  ],
+
+  // Same files the dev server and tests run, applied with
+  // `wrangler d1 migrations apply bedrock`.
+  "migrations_dir": "src/server/db/migrations",
+
+  "vars": {
+    "ASSEMBLY_ID": "riverbend"
+  }
+
+  // Not yet configured, and required before this is reachable:
+  //  - Cloudflare Access policy in front of the Worker, restricted to the
+  //    Assembly's treasurer(s).
+  //  - JWT verification in worker.ts identify(); see the comment there.
+  //  - An R2 bucket binding for receipt images and bank statements (Phase 5).
+}

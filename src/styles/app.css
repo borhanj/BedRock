@@ -1,0 +1,1084 @@
+/*
+ * Bedrock — layout and components.
+ *
+ * Follows option 1b of the source design ("the calendar is the app"): the
+ * nineteen months are the primary navigation. Geometry is kept faithful to the
+ * mockup; every colour comes from tokens.css. No hex literals below this line.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bd-canvas);
+  color: var(--bd-text);
+  font-family: var(--bd-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+a {
+  color: var(--bd-primary-deep);
+}
+
+/* Focus is visible everywhere — a keyboard user must be able to drive the
+   month chart, which is otherwise a wall of identical bars. */
+:focus-visible {
+  outline: 2px solid var(--bd-primary-deep);
+  outline-offset: 2px;
+}
+
+/* ── app shell ─────────────────────────────────────────────────────────── */
+
+.bd-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bd-gap);
+  height: 58px;
+  padding: 0 26px;
+  background: var(--bd-surface);
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: none;
+}
+
+.bd-brand__name {
+  font: 500 17px var(--bd-font-serif);
+  color: var(--bd-text);
+}
+
+.bd-brand__year {
+  font: 400 12px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-nav {
+  display: flex;
+  gap: 26px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bd-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.bd-nav__link {
+  font: 400 12.5px var(--bd-font-sans);
+  color: var(--bd-text);
+  text-decoration: none;
+  white-space: nowrap;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.bd-nav__link:hover {
+  color: var(--bd-primary-deep);
+}
+
+.bd-nav__link--active {
+  font-weight: 600;
+  color: var(--bd-primary-deep);
+  border-bottom-color: var(--bd-primary-deep);
+}
+
+.bd-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.bd-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bd-primary-soft);
+  color: var(--bd-primary-deep);
+  font: 600 9.5px/24px var(--bd-font-sans);
+  text-align: center;
+  flex: none;
+}
+
+/* ── buttons ───────────────────────────────────────────────────────────── */
+
+.bd-btn {
+  display: inline-block;
+  padding: 6px 12px;
+  font: 600 11.5px var(--bd-font-sans);
+  text-align: center;
+  text-decoration: none;
+  border-radius: var(--bd-radius);
+  transition: background-color 120ms ease;
+}
+
+.bd-btn--solid {
+  background: var(--bd-ink);
+  color: var(--bd-surface);
+}
+
+.bd-btn--solid:hover {
+  background: var(--bd-primary-deeper);
+}
+
+/* Note the deep teal, not --bd-primary: white on #0e8f8f is only 3.9:1. */
+.bd-btn--primary {
+  background: var(--bd-primary-deep);
+  color: var(--bd-surface);
+}
+
+.bd-btn--primary:hover {
+  background: var(--bd-primary-deeper);
+}
+
+.bd-btn--ghost {
+  border: 1px solid var(--bd-report-rule);
+  color: var(--bd-report-text);
+  font-weight: 500;
+}
+
+.bd-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bd-btn--block {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 12px;
+}
+
+/* ── page ──────────────────────────────────────────────────────────────── */
+
+.bd-page {
+  max-width: var(--bd-page-max);
+  margin: 0 auto;
+  padding: 30px 26px 44px;
+}
+
+.bd-pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--bd-gap-lg);
+  flex-wrap: wrap;
+}
+
+.bd-eyebrow {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bd-primary-deep);
+}
+
+.bd-headline {
+  margin: 8px 0 0;
+  font: 400 24px var(--bd-font-serif);
+  color: var(--bd-text);
+}
+
+/* ── stat tiles ────────────────────────────────────────────────────────── */
+
+.bd-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.bd-stat {
+  padding: 10px 16px;
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  border-radius: var(--bd-radius);
+  min-width: 132px;
+}
+
+.bd-stat__label {
+  font: 400 10.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-stat__value {
+  font: 400 19px var(--bd-font-serif);
+  color: var(--bd-text);
+}
+
+.bd-stat--income .bd-stat__value {
+  color: var(--bd-income-text);
+}
+
+.bd-stat--inverse {
+  background: var(--bd-ink);
+  border-color: var(--bd-ink);
+}
+
+.bd-stat--inverse .bd-stat__label {
+  color: var(--bd-report-muted);
+}
+
+.bd-stat--inverse .bd-stat__value {
+  color: var(--bd-report-text);
+}
+
+/* ── cards ─────────────────────────────────────────────────────────────── */
+
+.bd-card {
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  border-radius: var(--bd-radius);
+  padding: 20px;
+}
+
+.bd-card--wide {
+  margin-top: 26px;
+  padding: 22px 24px;
+}
+
+.bd-card--inverse {
+  background: var(--bd-ink);
+  border-color: var(--bd-ink);
+  color: var(--bd-report-text);
+}
+
+.bd-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--bd-gap);
+  flex-wrap: wrap;
+}
+
+.bd-card__title {
+  margin: 0;
+  font: 500 14px var(--bd-font-serif);
+  color: var(--bd-text);
+}
+
+.bd-card__hint {
+  font: 400 11.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-card__label {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+}
+
+.bd-card--inverse .bd-card__label {
+  color: var(--bd-report-muted);
+}
+
+.bd-grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bd-gap);
+  margin-top: 22px;
+  align-items: stretch;
+}
+
+/* ── the nineteen months ───────────────────────────────────────────────── */
+
+.bd-year {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  margin-top: 20px;
+  height: 132px;
+}
+
+.bd-month {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  padding: 0;
+  border-radius: 0;
+  text-align: center;
+}
+
+/*
+ * The bar sizes against this track, not against the column.
+ *
+ * Sizing it against the column made its percentage resolve against the full
+ * 132px while the label and gap also had to fit, so flex-shrink clamped every
+ * bar over ~87% to the same pixel height — Jamál and Kamál rendered identical
+ * despite a $105 difference. The track occupies exactly the drawable area, so
+ * 100% means 100%.
+ */
+.bd-month__track {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bd-month--intercalary {
+  flex: none;
+  width: 26px;
+  padding: 0 3px;
+  background: var(--bd-intercalary-hatch);
+}
+
+.bd-month__bar {
+  width: 100%;
+  flex: none;
+  min-height: 6px;
+  background: var(--bd-month-future);
+  transition: filter 120ms ease;
+}
+
+.bd-month:hover .bd-month__bar {
+  filter: brightness(0.92);
+}
+
+.bd-month__bar--closed {
+  background: var(--bd-month-closed);
+}
+
+.bd-month__bar--ready {
+  background: var(--bd-month-ready);
+}
+
+.bd-month__bar--current {
+  background: var(--bd-month-current);
+  border-top: 2px solid var(--bd-month-current-edge);
+}
+
+/*
+ * A closed month that received nothing renders at the same 6px as a month
+ * that has not happened yet. Same height, different meaning — so it gets a
+ * distinctly darker fill and its own tooltip.
+ */
+.bd-month__bar--empty {
+  background: var(--bd-month-empty);
+}
+
+.bd-month__label {
+  font: 400 9.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-month--intercalary .bd-month__label {
+  font-size: 8.5px;
+}
+
+.bd-month--active .bd-month__label {
+  font-weight: 600;
+  color: var(--bd-primary-deep);
+}
+
+.bd-month--now .bd-month__label {
+  font-weight: 600;
+  color: var(--bd-text);
+}
+
+.bd-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 22px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--bd-border);
+}
+
+.bd-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 400 11px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-legend__swatch {
+  width: 10px;
+  height: 10px;
+  flex: none;
+}
+
+/* ── where the money sits ──────────────────────────────────────────────── */
+
+.bd-split {
+  display: flex;
+  height: 14px;
+  margin-top: 16px;
+  border: 1px solid var(--bd-border);
+}
+
+.bd-split__part {
+  height: 100%;
+}
+
+.bd-fundlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.bd-fund {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.bd-fund__dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+}
+
+.bd-fund__label {
+  flex: 1;
+  font: 400 12.5px var(--bd-font-sans);
+}
+
+.bd-fund__amount {
+  font: 400 13.5px var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-note {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dotted var(--bd-border-strong);
+  font: 400 11.5px/1.5 var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+/* ── needs your attention ──────────────────────────────────────────────── */
+
+.bd-attention {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+}
+
+.bd-attention__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--bd-border);
+  text-align: left;
+  width: 100%;
+}
+
+.bd-attention__row:last-child {
+  border-bottom: none;
+}
+
+.bd-attention__count {
+  font: 400 22px var(--bd-font-serif);
+  color: var(--bd-attention);
+  min-width: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-attention__row--clear .bd-attention__count {
+  color: var(--bd-positive);
+}
+
+.bd-attention__label {
+  font: 400 12.5px/1.35 var(--bd-font-sans);
+  color: var(--bd-text);
+}
+
+.bd-attention__row--clear .bd-attention__label {
+  color: var(--bd-muted);
+}
+
+/* ── next feast ────────────────────────────────────────────────────────── */
+
+.bd-feast__name {
+  margin-top: 12px;
+  font: 400 27px var(--bd-font-serif);
+}
+
+.bd-feast__date {
+  margin-top: 4px;
+  font: 400 13px var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-feast__note {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--bd-report-rule);
+  font: 400 12.5px/1.55 var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-feast__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* ── the Feast report ──────────────────────────────────────────────────── */
+
+.bd-reportwrap {
+  max-width: var(--bd-report-max);
+  margin: 0 auto;
+  padding: 26px;
+}
+
+.bd-reportbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bd-gap);
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font: 400 11.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-report {
+  background: var(--bd-report-bg);
+  color: var(--bd-report-text);
+  padding: 44px 52px;
+}
+
+.bd-report__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--bd-gap-lg);
+  flex-wrap: wrap;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--bd-report-rule);
+}
+
+.bd-report__eyebrow {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bd-report-accent);
+}
+
+.bd-report__title {
+  margin: 10px 0 0;
+  font: 400 36px var(--bd-font-serif);
+}
+
+.bd-report__meta {
+  text-align: right;
+  font: 400 12.5px/1.6 var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-report__figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 34px;
+  margin-top: 32px;
+}
+
+.bd-figure__label {
+  font: 400 11.5px var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-figure__value {
+  margin-top: 6px;
+  font: 300 34px var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-figure--in .bd-figure__value {
+  color: var(--bd-report-inflow);
+}
+
+.bd-figure--out .bd-figure__value {
+  color: var(--bd-report-outflow);
+}
+
+.bd-report__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 44px;
+  margin-top: 38px;
+}
+
+.bd-report__colhead {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--bd-report-accent);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--bd-report-rule);
+}
+
+.bd-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+}
+
+.bd-line__label {
+  flex: 1;
+  font: 400 14px var(--bd-font-sans);
+}
+
+.bd-line__track {
+  width: 120px;
+  height: 9px;
+  flex: none;
+  background: var(--bd-report-track);
+}
+
+.bd-line__fill {
+  display: block;
+  height: 100%;
+}
+
+.bd-line__fill--in {
+  background: var(--bd-report-accent);
+}
+
+.bd-line__fill--out {
+  background: var(--bd-report-outflow);
+}
+
+.bd-line__amount {
+  width: 92px;
+  flex: none;
+  text-align: right;
+  font: 400 15px var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-report__aside {
+  margin-top: 14px;
+  font: 400 12px/1.55 var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-report__foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--bd-gap-lg);
+  flex-wrap: wrap;
+  margin-top: 40px;
+  padding-top: 22px;
+  border-top: 1px solid var(--bd-report-rule);
+}
+
+.bd-report__footlabel {
+  font: 400 12px var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-report__footdetail {
+  margin-top: 4px;
+  font: 400 15px var(--bd-font-sans);
+  color: var(--bd-report-muted);
+}
+
+.bd-report__total {
+  font: 300 46px var(--bd-font-serif);
+  color: var(--bd-report-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── placeholder screens for the phases not yet built ──────────────────── */
+
+.bd-placeholder {
+  max-width: 560px;
+  margin: 64px auto;
+  padding: 32px;
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  text-align: center;
+}
+
+.bd-placeholder__title {
+  margin: 0;
+  font: 400 24px var(--bd-font-serif);
+}
+
+.bd-placeholder__body {
+  margin: 12px 0 0;
+  font: 400 13.5px/1.6 var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+/* ── narrow screens ────────────────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .bd-grid3 {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Next Feast is the call to action; give it the full width rather than
+     letting it orphan into a half-column. */
+  .bd-grid3 > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 860px) {
+  .bd-topbar {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 12px 18px;
+    row-gap: 10px;
+  }
+
+  .bd-nav {
+    order: 3;
+    width: 100%;
+    gap: 18px;
+  }
+
+  .bd-page {
+    padding: 22px 18px 36px;
+  }
+
+  .bd-report {
+    padding: 30px 26px;
+  }
+
+  .bd-report__cols {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .bd-report__title {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 680px) {
+  .bd-grid3 {
+    grid-template-columns: 1fr;
+  }
+
+  .bd-stats {
+    width: 100%;
+  }
+
+  .bd-stat {
+    flex: 1 1 45%;
+  }
+
+  /*
+   * The nineteen-month chart cannot survive a 375px viewport as nineteen
+   * columns. It scrolls sideways at a legible minimum width instead of
+   * compressing into unreadable slivers.
+   */
+  .bd-year {
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+
+  .bd-month {
+    flex: 0 0 34px;
+  }
+
+  .bd-report__figures {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .bd-report__meta {
+    text-align: left;
+  }
+
+  .bd-line__track {
+    display: none;
+  }
+
+  .bd-report__total {
+    font-size: 34px;
+  }
+}
+
+/* ── print ─────────────────────────────────────────────────────────────── */
+
+@media print {
+  .bd-topbar,
+  .bd-reportbar {
+    display: none;
+  }
+
+  .bd-reportwrap {
+    padding: 0;
+    max-width: none;
+  }
+
+  .bd-report {
+    padding: 0;
+  }
+
+  .bd-line__track {
+    border: 1px solid var(--bd-report-rule);
+  }
+}
+
+/* ── ledger, import and cash journal (Phase 3) ─────────────────────────── */
+
+.bd-subnav {
+  display: flex;
+  gap: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-subnav__link {
+  padding: 0 0 9px;
+  font: 400 13px var(--bd-font-sans);
+  color: var(--bd-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.bd-subnav__link:hover {
+  color: var(--bd-primary-deep);
+}
+
+.bd-subnav__link--active {
+  font-weight: 600;
+  color: var(--bd-primary-deep);
+  border-bottom-color: var(--bd-primary-deep);
+}
+
+.bd-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 18px;
+}
+
+.bd-input,
+.bd-select {
+  padding: 7px 10px;
+  font: 400 13px var(--bd-font-sans);
+  color: var(--bd-text);
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border-strong);
+  border-radius: var(--bd-radius);
+  min-width: 0;
+}
+
+.bd-input:focus,
+.bd-select:focus {
+  border-color: var(--bd-primary-deep);
+}
+
+/* An unresolvable date order is the one input error that can quietly corrupt
+   a year of reports, so it is marked on the control itself. */
+.bd-select--warn {
+  border-color: var(--bd-attention);
+  border-width: 2px;
+}
+
+.bd-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font: 400 13px var(--bd-font-sans);
+  color: var(--bd-text);
+}
+
+.bd-formrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.bd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 150px;
+}
+
+.bd-field__label {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+}
+
+.bd-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.bd-warn {
+  margin: 14px 0 0;
+  padding: 11px 14px;
+  font: 400 12.5px/1.55 var(--bd-font-sans);
+  color: var(--bd-expense-text);
+  background: var(--bd-expense-soft);
+  border-left: 3px solid var(--bd-expense);
+}
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+
+.bd-table {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  font: 400 13px var(--bd-font-sans);
+}
+
+.bd-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+  border-bottom: 1px solid var(--bd-border);
+  white-space: nowrap;
+}
+
+.bd-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--bd-border);
+  vertical-align: top;
+}
+
+.bd-table tr:last-child td {
+  border-bottom: none;
+}
+
+.bd-table__num {
+  text-align: right;
+  font-family: var(--bd-font-serif);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bd-table__date {
+  white-space: nowrap;
+  color: var(--bd-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-table__meta {
+  font-size: 12px;
+  color: var(--bd-muted);
+}
+
+/* Rows still needing a decision are marked on the leading edge rather than
+   tinted, so a long list of them does not read as an error state. */
+.bd-tr--todo td:first-child {
+  box-shadow: inset 3px 0 0 var(--bd-attention);
+}
+
+.bd-tr--muted td {
+  color: var(--bd-muted);
+}
+
+.bd-payee {
+  display: block;
+}
+
+.bd-memo {
+  display: block;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--bd-muted);
+}
+
+.bd-amount--in {
+  color: var(--bd-income-text);
+}
+
+.bd-amount--out {
+  color: var(--bd-text);
+}
+
+.bd-running {
+  color: var(--bd-primary-deep);
+}
+
+.bd-flag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font: 600 10px var(--bd-font-sans);
+  color: var(--bd-muted);
+  background: var(--bd-canvas);
+  border: 1px solid var(--bd-border);
+}
+
+.bd-flag--warn {
+  color: var(--bd-attention);
+  border-color: var(--bd-attention);
+  background: transparent;
+}
+
+.bd-locked {
+  font-size: 12px;
+  color: var(--bd-muted);
+}
+
+/* The suggestion is a button, not a prefilled value. Accepting it is the act
+   that teaches the rule. */
+.bd-suggest {
+  display: block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  font: 500 11.5px var(--bd-font-sans);
+  color: var(--bd-primary-deep);
+  background: var(--bd-primary-soft);
+  border-radius: var(--bd-radius);
+}
+
+.bd-suggest:hover {
+  background: var(--bd-accent-pale);
+}
+
+@media (max-width: 860px) {
+  /* Tables scroll inside their own box rather than widening the page. */
+  .bd-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .bd-field {
+    min-width: 100%;
+  }
+}
