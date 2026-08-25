@@ -206,11 +206,28 @@ async function runChecks(
   // A finalised report is a statement already made to the community. If a
   // later correction has moved the figures it still shows what was presented,
   // and the divergence belongs in the audit pack rather than only on screen.
-  const drifted: number[] = []
-  for (const month of monthsForYear(bahaiYear).filter((p) => p.kind === 'month')) {
-    const report = await loadReport(db, assemblyId, bahaiYear, month.monthNumber!)
-    if (report?.drift) drifted.push(month.monthNumber!)
-  }
+  // Only a report with a frozen snapshot can diverge from one: drift is the
+  // difference between what was presented and what the ledger now says, and a
+  // month that was never closed has nothing frozen to differ from. Asking the
+  // database which months those are costs one query and saves a recomputation
+  // of every month that has not been closed yet — eleven of nineteen on a
+  // year still running, and each of those is eight round trips against D1.
+  //
+  // The rest are recomputed together rather than one after another. They are
+  // reads, they do not depend on each other, and in sequence they were most of
+  // what made this document slow to draw.
+  const closed = await db.all<{ month_number: number }>(
+    `SELECT month_number FROM reports
+      WHERE assembly_id = ? AND bahai_year = ? AND snapshot_json IS NOT NULL
+      ORDER BY month_number`,
+    [assemblyId, bahaiYear],
+  )
+  const checked = await Promise.all(
+    closed.map((r) => loadReport(db, assemblyId, bahaiYear, r.month_number)),
+  )
+  const drifted = closed
+    .filter((_, i) => checked[i]?.drift)
+    .map((r) => r.month_number)
   checks.push({
     key: 'reports-stable',
     holds: drifted.length === 0,

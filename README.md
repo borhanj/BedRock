@@ -145,7 +145,9 @@ images, and meeting a real bank's CSV.
 It should name the treasurer(s). Everything else about the auth chain is in place.
 
 **Nothing has been exercised at volume.** The worked year is 85 transactions. Nothing here
-has met a real CSV from a real bank.
+has met a real CSV from a real bank. Measuring against the deployed D1 did surface and fix
+the two worst scaling problems — see *A query against D1 is a network round trip* below —
+but the ledger, the import preview and the receipt book have not been looked at the same way.
 
 ### Smaller things left undone
 
@@ -419,6 +421,22 @@ database and refuses to print anything unless the two land on the same books. Tw
 in it are the database's rules rather than preferences: budget lines go in before their year
 (an approved year refuses new lines), and reconciliations go in open and are balanced at the
 end (a balanced one refuses changes to what has cleared).
+
+**A query against D1 is a network round trip, and they add up.** In `node:sqlite` a query
+costs microseconds, so a loop of them is invisible in the tests; against D1 each one crosses
+a network and the same loop is seconds. Two places had it badly. `loadYearSummary` called
+`computeReport` once per month — eight queries apiece, twenty times over — and took 1.1s on
+a year of eighty-five transactions. The audit package composed that plus a drift check per
+month and took 1.8s.
+
+Both are fixed the way the dashboard already worked and the way this file already prescribes:
+the database returns daily sums over the whole year and the nineteen months are bucketed in
+TypeScript. The audit package additionally asks which months have a frozen snapshot — only
+those can drift — and recomputes them together rather than one after another. Summary
+1095ms → 149ms; audit 1817ms → 645ms, on the deployed instance.
+
+The rule worth keeping: **a loop that queries per month is a bug against D1 even when the
+tests are instant.**
 
 **A restore goes into an empty place.** It will not merge into live books and it will not
 overwrite them, and the refusal is about the target rather than the file — a perfectly sound

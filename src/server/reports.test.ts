@@ -331,3 +331,61 @@ describe('the year-end summary', () => {
     expect(monthly).toBe(sum(s.incomeByFund))
   })
 })
+
+describe('the month-by-month rollup', () => {
+  let db: NodeSqlDatabase
+  beforeEach(async () => {
+    db = await freshDatabase()
+  })
+
+  it('carries the running balance through Ayyám-i-Há', async () => {
+    // The rollup buckets contributions and expenses by month, but accumulates
+    // the closing balance across every day in order. Ayyám-i-Há is a period
+    // with no month row, so anything spent in it would vanish from the closing
+    // figures if the balance were bucketed by month too.
+    const before = (await loadYearSummary(db, ASSEMBLY_ID, SEED_YEAR))!
+    const alaBefore = before.months.find((m) => m.monthNumber === 19)!
+    const mulkBefore = before.months.find((m) => m.monthNumber === 18)!
+
+    await createTransaction(
+      db, ASSEMBLY_ID,
+      {
+        accountId: 'acct-bank', occurredOn: '2027-02-27', amountCents: -25_000,
+        payee: 'Ayyám-i-Há hospitality', memo: null, method: 'bank',
+        kind: 'expense', categoryId: 'cat-hospitality', fundId: 'fund-local',
+      },
+      ACTOR, NOW,
+    )
+
+    const after = (await loadYearSummary(db, ASSEMBLY_ID, SEED_YEAR))!
+    const mulkAfter = after.months.find((m) => m.monthNumber === 18)!
+    const alaAfter = after.months.find((m) => m.monthNumber === 19)!
+
+    // Mulk ends before the intercalary days, so it is untouched.
+    expect(mulkAfter.closingCents).toBe(mulkBefore.closingCents)
+    // ʿAláʼ comes after them, so it must carry the spend.
+    expect(alaAfter.closingCents).toBe(alaBefore.closingCents - 25_000)
+    // And it belongs to no month's own figures, because it fell in none.
+    expect(after.months.reduce((t, m) => t + m.expensesCents, 0)).toBe(
+      before.months.reduce((t, m) => t + m.expensesCents, 0),
+    )
+  })
+
+  it('ends the year where the year-level figures end', async () => {
+    // The last month's closing balance and the summary's own closing figure
+    // are computed by different code paths and must not be able to disagree.
+    const summary = (await loadYearSummary(db, ASSEMBLY_ID, SEED_YEAR))!
+    expect(summary.months.at(-1)!.closingCents).toBe(summary.closingCents)
+  })
+
+  it('adds up to the year totals it prints beside them', async () => {
+    const summary = (await loadYearSummary(db, ASSEMBLY_ID, SEED_YEAR))!
+    const monthly = summary.months.reduce((t, m) => t + m.contributionsCents, 0)
+    const yearly = summary.incomeByFund.reduce((t, l) => t + l.amountCents, 0)
+    expect(monthly).toBe(yearly)
+
+    const spent = summary.months.reduce((t, m) => t + m.expensesCents, 0)
+    const yearlySpent = summary.expensesByCategory.reduce((t, l) => t + l.amountCents, 0)
+    expect(spent).toBe(yearlySpent)
+  })
+})

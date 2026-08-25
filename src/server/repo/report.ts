@@ -16,7 +16,7 @@
  * read, and quietly serving stale figures with no warning, are both worse.
  */
 
-import { monthsForYear, type BadiPeriod } from '../../calendar/badi'
+import { monthsForYear, toDayIndex, type BadiPeriod } from '../../calendar/badi'
 import type {
   ReportDrift,
   ReportLineView,
@@ -29,6 +29,12 @@ import type { SqlDatabase } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
 
 // ── balance helpers ──────────────────────────────────────────────────────────
+
+/** One day's total, as the database groups it. Bucketed into months here. */
+interface DailyRow {
+  on_date: string
+  cents: number
+}
 
 async function balanceAsOf(
   db: SqlDatabase,
@@ -488,6 +494,121 @@ export async function unlockReport(
  * silently omitted a transaction because no monthly report happened to cover
  * it would be worse than useless at audit.
  */
+/**
+ * The nineteen rows of the month-by-month table, in four queries.
+ *
+ * This used to call `computeReport` once per month. That is eight queries a
+ * month, twenty times over counting the year itself, and against D1 every one
+ * is a network round trip: the summary took about 1.1 seconds on a worked year
+ * of eighty-five transactions, and the audit package — which composes this
+ * plus a drift check per month — took 1.8. Neither would have survived a real
+ * Assembly's ledger.
+ *
+ * It now follows the rule the dashboard already followed, and the one the
+ * README states: the database returns daily sums over the whole year and the
+ * nineteen months are bucketed here, from the Naw-Rúz table. Same figures,
+ * four queries instead of a hundred and fifty.
+ *
+ * The running balance is accumulated across every day in order rather than per
+ * month, because Ayyám-i-Há is a period with no month row but its transactions
+ * still move the balance. Bucketing the closing figure by month would drop
+ * them; walking the days keeps them where they belong.
+ */
+async function monthRollup(
+  db: SqlDatabase,
+  assemblyId: string,
+  periods: readonly BadiPeriod[],
+  openingCents: number,
+  statuses: ReadonlyMap<number, ReportStatus>,
+): Promise<YearMonthSummary[]> {
+  const from = periods[0].startDate
+  const to = periods[periods.length - 1].endDate
+  const range = [assemblyId, from, to]
+
+  const [contributionDays, expenseDays, remittanceDays, flowDays] = await Promise.all([
+    db.all<DailyRow>(
+      `SELECT t.occurred_on AS on_date, SUM(c.amount_cents) AS cents
+         FROM contributions c
+         JOIN transactions t ON t.id = c.transaction_id
+        WHERE c.assembly_id = ? AND t.occurred_on BETWEEN ? AND ?
+        GROUP BY t.occurred_on`,
+      range,
+    ),
+    db.all<DailyRow>(
+      // Positive magnitudes, as the table prints them.
+      `SELECT occurred_on AS on_date, -SUM(amount_cents) AS cents
+         FROM transactions
+        WHERE assembly_id = ? AND kind = 'expense' AND occurred_on BETWEEN ? AND ?
+        GROUP BY occurred_on`,
+      range,
+    ),
+    db.all<DailyRow>(
+      `SELECT sent_on AS on_date, SUM(amount_cents) AS cents
+         FROM remittances
+        WHERE assembly_id = ? AND sent_on BETWEEN ? AND ?
+        GROUP BY sent_on`,
+      range,
+    ),
+    db.all<DailyRow>(
+      // Every movement, signed, for the running balance.
+      `SELECT occurred_on AS on_date, SUM(amount_cents) AS cents
+         FROM transactions
+        WHERE assembly_id = ? AND occurred_on BETWEEN ? AND ?
+        GROUP BY occurred_on`,
+      range,
+    ),
+  ])
+
+  const bucket = (rows: readonly DailyRow[]) => {
+    const totals = new Map<number, number>()
+    for (const row of rows) {
+      const day = toDayIndex(row.on_date)
+      const period = periods.find(
+        (p) => day >= toDayIndex(p.startDate) && day <= toDayIndex(p.endDate),
+      )
+      if (!period || period.kind !== 'month') continue
+      const key = period.monthNumber!
+      totals.set(key, (totals.get(key) ?? 0) + row.cents)
+    }
+    return totals
+  }
+
+  const contributions = bucket(contributionDays)
+  const expenses = bucket(expenseDays)
+  const remitted = bucket(remittanceDays)
+
+  const flows = [...flowDays]
+    .map((r) => ({ day: toDayIndex(r.on_date), cents: r.cents }))
+    .sort((a, b) => a.day - b.day)
+
+  let balance = openingCents
+  let cursor = 0
+  const months: YearMonthSummary[] = []
+
+  for (const period of periods) {
+    // Ayyám-i-Há has no row, but its days still have to pass under the cursor
+    // before the next month's closing balance is read.
+    const end = toDayIndex(period.endDate)
+    while (cursor < flows.length && flows[cursor].day <= end) {
+      balance += flows[cursor].cents
+      cursor += 1
+    }
+    if (period.kind !== 'month') continue
+
+    months.push({
+      monthNumber: period.monthNumber!,
+      name: period.name,
+      contributionsCents: contributions.get(period.monthNumber!) ?? 0,
+      expensesCents: expenses.get(period.monthNumber!) ?? 0,
+      remittedCents: remitted.get(period.monthNumber!) ?? 0,
+      closingCents: balance,
+      status: statuses.get(period.monthNumber!) ?? 'none',
+    })
+  }
+
+  return months
+}
+
 export async function loadYearSummary(
   db: SqlDatabase,
   assemblyId: string,
@@ -522,25 +643,7 @@ export async function loadYearSummary(
     ).map((r) => [r.month_number, r.status]),
   )
 
-  const months: YearMonthSummary[] = []
-  for (const period of periods) {
-    if (period.kind !== 'month') continue
-    const monthTotals = await computeReport(
-      db,
-      assemblyId,
-      period.startDate,
-      period.endDate,
-    )
-    months.push({
-      monthNumber: period.monthNumber!,
-      name: period.name,
-      contributionsCents: sum(monthTotals.income),
-      expensesCents: sum(monthTotals.expenses),
-      remittedCents: monthTotals.remittedCents,
-      closingCents: monthTotals.closingCents,
-      status: statuses.get(period.monthNumber!) ?? 'none',
-    })
-  }
+  const months = await monthRollup(db, assemblyId, periods, totals.openingCents, statuses)
 
   return {
     bahaiYear: year,
