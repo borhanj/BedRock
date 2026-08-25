@@ -78,40 +78,62 @@ Plus a printable receipt at `/receipts/:id` to hand someone.
 
 All six nav destinations are built. There are no placeholders left.
 
-### Running against real Cloudflare
+### It is deployed
+
+<https://bedrock.<your-subdomain>.workers.dev> — behind Cloudflare Access, seeded with the
+worked year of 183 B.E. Signing in is required for the API; the static shell is public and
+useless without it.
 
 The dev server uses an in-memory database, so nothing persists between restarts. Set
 `BEDROCK_DEV_DB` to a file path to keep data across restarts, which is worth doing while
-working on the import flow. Deploying needs wrangler, which is not yet a dependency:
+working on the import flow.
+
+To deploy again after a change:
 
 ```bash
-npm i -D wrangler && npx wrangler d1 create bedrock
+npm run build && npx wrangler deploy
 ```
 
-Then put the returned id in `wrangler.jsonc`, apply the migrations with
-`npx wrangler d1 migrations apply bedrock`, and read the two blockers listed at the bottom of
-that file — an Access policy and JWT verification — before the Worker is reachable.
+To stand a fresh environment up from nothing:
+
+```bash
+npx wrangler d1 create bedrock
+```
+
+Put the returned id in `wrangler.jsonc`, then apply the schema and load the worked year. The
+seed is rendered to SQL from `src/server/seed.ts` rather than written twice, and the script
+replays its own output into a second database and checks it lands on the same books before
+printing anything:
+
+```bash
+npx wrangler d1 migrations apply bedrock --remote
+```
+
+```bash
+npx vite-node scripts/seed-sql.ts > seed.sql && npx wrangler d1 execute bedrock --remote --file=seed.sql
+```
+
+Finally, protect the Worker: its **Access** tab in the dashboard, scope *All traffic*, with a
+policy naming the treasurer(s). Copy the AUD tag and team domain from the *Application
+values* panel into `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `wrangler.jsonc` and redeploy.
+Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **279 passing**;
+Everything below is current as of the last commit. `npm test` should show **295 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
 
-Every phase in the original plan is built. What is left is the two blockers below, and then
-the smaller things.
+Every phase in the original plan is built, and it is deployed. What is left is below.
 
-### Two things that block real use
+### Before it holds a real Assembly's books
 
-**`worker.ts` `identify()` is attribution, not authentication.** It reads the email header
-Cloudflare Access forwards, which anyone able to reach the Worker directly can simply set
-themselves. Verifying `Cf-Access-Jwt-Assertion` against the team's public keys, and locking
-ingress to Access, are both required before this is exposed. This matters more since Phase 5:
-the donor PIN travels in request bodies and relies on Access terminating in front.
+**The Access policy is too wide.** It currently admits any member of the Cloudflare account.
+It should name the treasurer(s). Everything else about the auth chain is in place.
 
-**Nothing is deployed.** wrangler is not a dependency yet; see *Running against real
-Cloudflare* above for the four commands that change that.
+**Nothing has been exercised at volume.** The worked year is 85 transactions. Nothing here
+has met a real CSV from a real bank.
 
 ### Smaller things left undone
 
@@ -360,6 +382,32 @@ the audit trail and the voided receipts, with a schema version. Donor names go i
 ciphertext they are stored as: dropping them would make the file safe to lose and useless to
 keep, and decrypting them would make an export a way around the vault. `audit_actor` is
 excluded — it holds who is writing right now, which means nothing in a file.
+
+**Access is verified, not believed.** `worker.ts` reads the signed JWT in
+`Cf-Access-Jwt-Assertion` and checks it against the team's published keys — signature,
+algorithm, audience, issuer and expiry — rather than trusting the
+`Cf-Access-Authenticated-User-Email` header, which is a string anyone reaching the Worker
+directly can set for themselves. `src/server/access.ts` fails closed on every path: unset
+configuration, unreachable key endpoint, unknown key id, bad signature, wrong application,
+expired token. There is no "allow if we cannot check" branch, and the tests sign real tokens
+with a real generated keypair to prove a forged one does not verify.
+
+With no Access configuration at all the Worker refuses the API outright with a 503 rather
+than serving it unauthenticated. A variable nobody set must not be the reason an Assembly's
+books are readable.
+
+**A trigger body must not contain `CASE ... END;`.** wrangler splits migration files on
+semicolons before sending them to D1, so it reads the `END;` of a `CASE` as the end of the
+trigger and ships half a statement. SQLite's own parser accepts it, so the failure appears
+only against D1 — that is, only in production. The three `require_actor` guards were written
+that way and are now `WHEN` clauses instead, which is also how their siblings read.
+
+**The seed is rendered to SQL, never written twice.** `scripts/seed-sql.ts` builds a database
+with the real `migrate()` and `seed()` and dumps it, then replays its own output into a second
+database and refuses to print anything unless the two land on the same books. Two orderings
+in it are the database's rules rather than preferences: budget lines go in before their year
+(an approved year refuses new lines), and reconciliations go in open and are balanced at the
+end (a balanced one refuses changes to what has cleared).
 
 **The audit trail is enforced by triggers, not by convention.** An application-level rule only
 covers the code paths that remember it. The triggers in `0001_core.sql` fire for any write from

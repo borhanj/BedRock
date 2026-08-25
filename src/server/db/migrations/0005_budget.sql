@@ -59,10 +59,9 @@ CREATE INDEX ix_budgets_year ON budgets (assembly_id, bahai_year);
 
 CREATE TRIGGER trg_require_actor_budgets
 BEFORE INSERT ON budgets
+WHEN (SELECT actor FROM audit_actor WHERE id = 1) IS NULL
 BEGIN
-  SELECT CASE WHEN (SELECT actor FROM audit_actor WHERE id = 1) IS NULL
-    THEN RAISE(ABORT, 'No audit actor set: call setAuditActor() before writing')
-  END;
+  SELECT RAISE(ABORT, 'No audit actor set: call setAuditActor() before writing');
 END;
 
 CREATE TRIGGER trg_audit_budgets_insert

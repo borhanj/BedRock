@@ -46,10 +46,9 @@ CREATE UNIQUE INDEX ux_reconciliation_items_txn
 
 CREATE TRIGGER trg_require_actor_reconciliations
 BEFORE INSERT ON reconciliations
+WHEN (SELECT actor FROM audit_actor WHERE id = 1) IS NULL
 BEGIN
-  SELECT CASE WHEN (SELECT actor FROM audit_actor WHERE id = 1) IS NULL
-    THEN RAISE(ABORT, 'No audit actor set: call setAuditActor() before writing')
-  END;
+  SELECT RAISE(ABORT, 'No audit actor set: call setAuditActor() before writing');
 END;
 
 CREATE TRIGGER trg_audit_reconciliations_insert

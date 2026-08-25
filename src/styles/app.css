@@ -1580,9 +1580,23 @@ a {
  * The treasurer's controls. Everything marked this way is management chrome,
  * not the report, so paper gets the report and nothing else.
  */
+/*
+ * Marks management chrome so the print block at the end of this file can drop
+ * it. It sets no display of its own, deliberately.
+ *
+ * It used to say `display: block`, which read as harmless — the elements it
+ * marks are block-level anyway — but the rule sits late in the file and
+ * carries the same specificity as any single class, so it quietly won against
+ * whatever layout class it was paired with. `.bd-reportbar.bd-noprint` on the
+ * Feast report and the year summary lost its flex that way, which is why the
+ * back link and the print button had been sitting on top of one another
+ * instead of at opposite ends of the bar.
+ *
+ * An element's display belongs to the class that lays it out. This one only
+ * says where it should not appear.
+ */
 .bd-noprint {
   /* Visible on screen; removed by the print block at the end of this file. */
-  display: block;
 }
 
 .bd-btn--quiet {

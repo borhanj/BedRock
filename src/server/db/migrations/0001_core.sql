@@ -215,12 +215,18 @@ CREATE TABLE audit_actor (
 -- is not possible to move money in this schema without leaving a record of who
 -- moved it.
 
+-- The guard is a WHEN clause rather than a CASE inside the body, and that is
+-- not a style preference. A trigger body containing `CASE ... END;` cannot be
+-- split on semicolons correctly, and wrangler splits migration files on
+-- semicolons before sending them to D1: it reads the CASE's `END;` as the end
+-- of the trigger and ships half a statement, which D1 rejects as "incomplete
+-- input". SQLite's own parser accepts either form, so this only ever fails
+-- against D1 — that is, only in production.
 CREATE TRIGGER trg_require_actor_transactions
 BEFORE INSERT ON transactions
+WHEN (SELECT actor FROM audit_actor WHERE id = 1) IS NULL
 BEGIN
-  SELECT CASE WHEN (SELECT actor FROM audit_actor WHERE id = 1) IS NULL
-    THEN RAISE(ABORT, 'No audit actor set: call setAuditActor() before writing')
-  END;
+  SELECT RAISE(ABORT, 'No audit actor set: call setAuditActor() before writing');
 END;
 
 CREATE TRIGGER trg_audit_transactions_insert
