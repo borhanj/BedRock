@@ -20,6 +20,7 @@ import {
 } from '../import/mapping'
 import { findNearMatches, hashRows, type NearMatch } from '../import/dedupe'
 import { suggestForAll, learn, type Suggestion } from './rules'
+import { openedOn } from './opening'
 
 export type RowVerdict =
   /** Not seen before; will be imported. */
@@ -28,6 +29,20 @@ export type RowVerdict =
   | 'duplicate'
   /** Same amount and a similar description nearby. Needs a human. */
   | 'possible-duplicate'
+  /**
+   * Dated before the day these books open, so it is not part of them.
+   *
+   * Never imported, and the refusal matters more than it looks: the opening
+   * balance already accounts for everything that happened before that date.
+   * Importing a row from before it would count the same money twice — once
+   * inside the opening figure and once as a transaction — and the books would
+   * be out by exactly the amount of the history that was loaded.
+   *
+   * The fix is not to import it anyway. It is to move the opening date
+   * backwards and restate what was held then, which is what
+   * `restateOpening` is for.
+   */
+  | 'before-opening'
 
 export interface PreviewRow {
   readonly line: number
@@ -56,7 +71,10 @@ export interface ImportPreview {
     readonly duplicates: number
     readonly possible: number
     readonly unreadable: number
+    readonly beforeOpening: number
   }
+  /** The day the books open, so the screen can explain a refusal. */
+  readonly openedOn: string | null
 }
 
 /** Header and a few rows, for the column-mapping screen. */
@@ -109,12 +127,22 @@ async function buildPreview(
       dateDetection,
       rows: [],
       problems: [],
-      counts: { total: table.rows.length, fresh: 0, duplicates: 0, possible: 0, unreadable: 0 },
+      counts: {
+        total: table.rows.length,
+        fresh: 0,
+        duplicates: 0,
+        possible: 0,
+        unreadable: 0,
+        beforeOpening: 0,
+      },
+      openedOn: await openedOn(db, assemblyId),
     }
   }
 
   const { rows: mapped, problems } = applyMapping(table.rows, mapping)
   const hashed = await hashRows(accountId, mapped)
+
+  const wall = await openedOn(db, assemblyId)
 
   const existing = new Set(
     (
@@ -131,9 +159,12 @@ async function buildPreview(
     hashed.map((r) => r.description),
   )
 
+  const outside = (row: { occurredOn: string }) => wall !== null && row.occurredOn < wall
+
   // Only rows that would otherwise be imported are worth comparing: one the
-  // hash already recognises is settled.
-  const unseen = hashed.filter((row) => !existing.has(row.dedupeHash))
+  // hash already recognises is settled, and one outside the books will not be
+  // written whatever it resembles.
+  const unseen = hashed.filter((row) => !existing.has(row.dedupeHash) && !outside(row))
   const nearMatches = withNearMatches
     ? await findNearMatches(db, accountId, unseen)
     : unseen.map(() => null)
@@ -143,11 +174,15 @@ async function buildPreview(
 
   const rows: PreviewRow[] = hashed.map((row, i) => {
     const nearMatch = nearByHash.get(row.dedupeHash) ?? null
-    const verdict: RowVerdict = existing.has(row.dedupeHash)
-      ? 'duplicate'
-      : nearMatch
-        ? 'possible-duplicate'
-        : 'new'
+    // Checked first: a row dated before the books open is not part of them
+    // whether or not it also looks like something already on file.
+    const verdict: RowVerdict = outside(row)
+      ? 'before-opening'
+      : existing.has(row.dedupeHash)
+        ? 'duplicate'
+        : nearMatch
+          ? 'possible-duplicate'
+          : 'new'
 
     return {
       line: row.line,
@@ -177,7 +212,9 @@ async function buildPreview(
       duplicates: rows.filter((r) => r.verdict === 'duplicate').length,
       possible: rows.filter((r) => r.verdict === 'possible-duplicate').length,
       unreadable: problems.length,
+      beforeOpening: rows.filter((r) => r.verdict === 'before-opening').length,
     },
+    openedOn: wall,
   }
 }
 
@@ -223,10 +260,16 @@ export async function commitImport(
   // record of "everything in here was already on file".
   const batchId = `imp-${crypto.randomUUID()}`
 
-  // A duplicate is never imported even if the client asks: the unique index
-  // would reject it anyway, and failing the whole batch over it helps nobody.
+  // Neither verdict is importable however the client asks. A duplicate would
+  // be rejected by the unique index anyway, and failing the whole batch over
+  // it helps nobody. A row from before the books open is refused for a reason
+  // that no index enforces: the opening balance already contains it, so
+  // writing it would count the same money twice.
   const importing = preview.rows.filter(
-    (row) => row.verdict !== 'duplicate' && accept.has(row.dedupeHash),
+    (row) =>
+      row.verdict !== 'duplicate' &&
+      row.verdict !== 'before-opening' &&
+      accept.has(row.dedupeHash),
   )
 
   // The batch row goes first: every transaction references it, and the foreign

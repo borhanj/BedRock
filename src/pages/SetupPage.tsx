@@ -7,6 +7,7 @@ import {
 } from '../data/api'
 import Loading from '../components/Loading'
 import ErrorPanel from '../components/ErrorPanel'
+import OpeningPage from './OpeningPage'
 
 /**
  * Opening a new Assembly's books.
@@ -67,30 +68,11 @@ export default function SetupPage() {
   if (error) return <ErrorPanel message={error} />
   if (!status) return <Loading label="Looking for existing books" />
 
-  if (status.isSetUp) {
-    return (
-      <main className="bd-page">
-        <div className="bd-pagehead">
-          <div>
-            <p className="bd-eyebrow">Setting up</p>
-            <h1 className="bd-headline">{status.assemblyName} is already keeping books here</h1>
-          </div>
-        </div>
-        <section className="bd-card bd-card--wide">
-          <p className="bd-note">
-            These books were opened on {status.openedOn ?? 'a date this deployment does not record'}.
-            Setting up again would mean writing a second Assembly over the first, so this
-            screen will not do it. If you meant to start fresh, use an empty deployment.
-          </p>
-          <div className="bd-actions">
-            <button type="button" className="bd-btn bd-btn--primary" onClick={leaveForTheBooks}>
-              Go to the books
-            </button>
-          </div>
-        </section>
-      </main>
-    )
-  }
+  // Books that already exist are not set up again — they are inspected. This
+  // route is where a treasurer is sent from the importer when a statement
+  // reaches back before the wall, so it has to be the screen that can move it
+  // rather than one that says no and stops.
+  if (status.isSetUp) return <OpeningPage />
 
   return <SetupForm status={status} onOpened={leaveForTheBooks} />
 }

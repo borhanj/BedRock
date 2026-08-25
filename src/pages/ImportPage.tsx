@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { formatSigned } from '../lib/money'
 import {
   commitImport,
@@ -328,16 +329,35 @@ function PreviewTable({
             <th>Status</th>
           </tr>
         </thead>
+        <caption className="bd-note">
+          {preview.counts.beforeOpening > 0 ? (
+            <>
+              {preview.counts.beforeOpening}{' '}
+              {preview.counts.beforeOpening === 1 ? 'row is' : 'rows are'} dated before{' '}
+              {preview.openedOn}, the day these books open, so{' '}
+              {preview.counts.beforeOpening === 1 ? 'it is' : 'they are'} not part of them.
+              The opening balance already accounts for what happened before that day —
+              importing{' '}
+              {preview.counts.beforeOpening === 1 ? 'it' : 'them'} would count the same money
+              twice. To take this history on, <Link to="/setup">move the opening date back</Link>{' '}
+              and restate what was held then, and these rows become importable.
+            </>
+          ) : null}
+        </caption>
         <tbody>
           {preview.rows.map((row) => {
             const duplicate = row.verdict === 'duplicate'
+            const outside = row.verdict === 'before-opening'
             return (
-              <tr key={row.dedupeHash} className={duplicate ? 'bd-tr--muted' : undefined}>
+              <tr
+                key={row.dedupeHash}
+                className={duplicate || outside ? 'bd-tr--muted' : undefined}
+              >
                 <td>
                   <input
                     type="checkbox"
-                    checked={accepted.has(row.dedupeHash)}
-                    disabled={duplicate}
+                    checked={accepted.has(row.dedupeHash) && !outside}
+                    disabled={duplicate || outside}
                     onChange={() => onToggle(row.dedupeHash)}
                     aria-label={`Import ${row.description}`}
                   />
@@ -367,6 +387,9 @@ function PreviewTable({
                         ? ` (${row.nearMatch.daysApart} days apart)`
                         : ''}
                     </span>
+                  )}
+                  {outside && (
+                    <span className="bd-flag bd-flag--warn">before the books open</span>
                   )}
                   {row.verdict === 'new' && 'new'}
                 </td>

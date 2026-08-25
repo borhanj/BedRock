@@ -24,6 +24,11 @@ import type { AssemblyView, YearSummaryView } from '../../shared/types'
 import type { SqlDatabase } from '../db/adapter'
 import { loadYearSummary, loadReport } from './report'
 import { loadFunds, onHand, type FundsView } from './funds'
+import {
+  loadCheckpoints,
+  loadOpeningPosition,
+  type CheckpointView,
+} from './opening'
 import { loadBudget, type BudgetView } from './budget'
 import { listReconciliations, type ReconciliationSummary } from './reconcile'
 import { listReceipts, receiptSummary, type ReceiptLogSummary, type ReceiptView } from './receipts'
@@ -73,6 +78,12 @@ export interface AuditPackageView {
   readonly ledger: readonly LedgerRow[]
   readonly checks: readonly AuditCheck[]
   readonly gaps: readonly AuditGap[]
+  /**
+   * Figures the Assembly accepted before the books were restated backwards,
+   * and whether the history loaded since reproduces them. Empty for books
+   * whose opening date has never moved, which is most of them.
+   */
+  readonly checkpoints: readonly CheckpointView[]
 }
 
 export async function loadAuditPackage(
@@ -119,6 +130,7 @@ export async function loadAuditPackage(
     ledger,
     checks: await runChecks(db, assemblyId, bahaiYear, funds, receipts),
     gaps: await findGaps(db, assemblyId, bahaiYear, from, to),
+    checkpoints: await loadCheckpoints(db, assemblyId),
   }
 }
 
@@ -274,6 +286,14 @@ async function findGaps(
   from: string,
   to: string,
 ): Promise<AuditGap[]> {
+  // Disclosed rather than left to be noticed. An opening difference nobody has
+  // accounted for is exactly the kind of thing an auditor finds and the pack
+  // should have said first — and unlike the counts below it is not a tidiness
+  // problem but money whose ownership is unknown.
+  const position = await loadOpeningPosition(db, assemblyId)
+  const checkpoints = await loadCheckpoints(db, assemblyId)
+  const broken = checkpoints.filter((c) => !c.holds)
+
   const row = await db.get<{
     uncategorised: number
     no_image: number
@@ -319,6 +339,43 @@ async function findGaps(
   )
 
   return [
+    ...(position.unexplainedCents !== 0
+      ? [
+          {
+            key: 'opening-unexplained',
+            count: 1,
+            label:
+              position.unexplainedCents > 0
+                ? `${money(position.unexplainedCents)} was on hand when the books opened and no fund claims it`
+                : `the funds claim ${money(-position.unexplainedCents)} more than the Assembly holds`,
+            consequence:
+              position.unexplainedCents > 0
+                ? 'The books balance and the money is real, but nobody has established whose ' +
+                  'it is. Until the Assembly decides, it is deliberately kept out of the ' +
+                  'Local Fund rather than counted as money available to spend.'
+                : 'Money earmarked for another institution appears to have been spent on ' +
+                  'something else before these books opened. The shortfall is carried openly ' +
+                  'rather than netted away, and the amount is the size of what is missing.',
+          },
+        ]
+      : []),
+    ...(broken.length > 0
+      ? [
+          {
+            key: 'opening-checkpoint',
+            count: broken.length,
+            label:
+              broken.length === 1
+                ? `the books no longer reproduce the ${money(broken[0].expectedCents)} they held on ${broken[0].asOf}`
+                : 'restated opening figures no longer reproduce what the books once held',
+            consequence:
+              'The opening date was moved backwards and history loaded in behind it. That ' +
+              'history does not add up to the figure the Assembly had already accepted for ' +
+              'the old opening date, so transactions in between are missing or duplicated. ' +
+              'The difference is the size of the error.',
+          },
+        ]
+      : []),
     {
       key: 'uncategorised',
       count: row?.uncategorised ?? 0,

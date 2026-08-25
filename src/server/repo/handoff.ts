@@ -25,14 +25,16 @@ import type { SqlDatabase, SqlValue } from '../db/adapter'
 
 /** Bumped when the shape of an export changes in a way an importer must know. */
 /**
- * 2 — added `fund_openings`, the opening position.
+ * 3 — added `opening_checkpoints`, the figures a restatement has to prove
+ *     against. 2 added `fund_openings`, the opening position.
  *
- * Bumped because a bundle written after that table existed carries figures a
- * reader without it would silently drop, and dropping them moves every fund
- * balance in the file. Older bundles still load: a version this build has
- * never heard of is refused, a version it has outgrown is not.
+ * Bumped whenever the bundle gains a table, because a reader without it drops
+ * those rows silently — and dropping either of these changes what the books
+ * say rather than merely omitting a detail. Older bundles still load: a
+ * version this build has never heard of is refused, a version it has outgrown
+ * is not.
  */
-export const HANDOFF_SCHEMA_VERSION = 2
+export const HANDOFF_SCHEMA_VERSION = 3
 
 /** Something that has to pass between two people, not between two databases. */
 export interface HandoffStep {
@@ -88,6 +90,7 @@ export const RESTORE_ORDER = [
   // After funds, which it references, and before anything that reads a fund
   // balance: what a fund opened with is part of what it holds.
   'fund_openings',
+  'opening_checkpoints',
   'categories',
   'donors',
   'import_batches',

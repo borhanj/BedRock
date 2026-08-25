@@ -61,7 +61,13 @@ import {
   setBudgetLine,
 } from './repo/budget'
 import { forgetRule, listRules } from './repo/rules'
-import { loadOpeningPosition, resolveUnexplained, OpeningError } from './repo/opening'
+import {
+  loadCheckpoints,
+  loadOpeningPosition,
+  resolveUnexplained,
+  restateOpening,
+  OpeningError,
+} from './repo/opening'
 import { setUpAssembly, setupStatus, SetupError } from './repo/setup'
 import {
   changeSecret,
@@ -234,7 +240,35 @@ async function route(
 
   // ── the opening position, and the gap in it ────────────────────────────
   if (path === 'opening' && method === 'GET') {
-    return json(await loadOpeningPosition(db, assemblyId))
+    const [position, checkpoints] = await Promise.all([
+      loadOpeningPosition(db, assemblyId),
+      loadCheckpoints(db, assemblyId),
+    ])
+    return json({ ...position, checkpoints })
+  }
+
+  // Moving the wall backwards, when the previous year's journal turns up.
+  if (path === 'opening/restate' && method === 'POST') {
+    const body = (await request.json()) as {
+      openedOn?: string
+      accounts?: Record<string, number>
+      declared?: Record<string, number>
+      reason?: string
+      decidedBy?: string
+    }
+    return json(
+      await restateOpening(
+        db, assemblyId,
+        {
+          openedOn: required(body.openedOn, 'openedOn'),
+          accounts: body.accounts ?? {},
+          declared: body.declared ?? {},
+          reason: required(body.reason, 'reason'),
+          decidedBy: required(body.decidedBy, 'decidedBy'),
+        },
+        ctx.actor, ctx.now,
+      ),
+    )
   }
 
   if (path === 'opening/resolve' && method === 'POST') {

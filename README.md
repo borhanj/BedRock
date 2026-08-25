@@ -85,6 +85,12 @@ Where those figures disagree — which is the normal case, not the exceptional o
 difference is carried as its own line rather than absorbed, and accounting for it later is
 a recorded Assembly decision. A fresh deployment redirects here instead of failing.
 
+The opening date is a wall and the importer enforces it: a statement reaching back before
+the books opened has those rows marked and refused, because the opening balance already
+contains them. When the previous year's journal turns up, `/setup` on an Assembly that
+already has books is where the wall moves — and moving it leaves a checkpoint, so the
+history loaded behind it has to reproduce the figure the Assembly had already accepted.
+
 All six nav destinations are built, plus setup outside them. There are no placeholders
 left.
 
@@ -143,7 +149,7 @@ Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **365 passing**;
+Everything below is current as of the last commit. `npm test` should show **385 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
@@ -151,15 +157,10 @@ if it does not, start there rather than with new work.
 Every phase in the original plan is built, and it is deployed. Nothing is half-finished and
 no work is mid-flight. Pick from the lists below.
 
-An Assembly can now open its own books, so the software no longer requires a fictional
-community to be usable. What is left is mostly hardening: narrowing the Access policy, the
-R2 binding for receipt images, and meeting a real bank's CSV.
-
-Setup takes opening balances and nothing else. Two things it does not yet do, both of which
-the schema is already shaped for: importing a CSV of transactions from earlier in the year,
-and moving the opening date backwards when the previous year's cash journal turns up. The
-wall exists (`assemblies.opened_on`) and `fund_openings` already has a `restated` kind for
-exactly that act — neither is wired up.
+An Assembly can now open its own books and take on history from before it opened them, so
+the software no longer requires a fictional community to be usable. What is left is mostly
+hardening: narrowing the Access policy, the R2 binding for receipt images, and meeting a
+real bank's CSV.
 
 ### Before it holds a real Assembly's books
 
@@ -248,7 +249,8 @@ src/
                repo/budget.ts    planned against actual, and next year's draft
                repo/reconcile.ts the statement, ticked off
                repo/setup.ts     opening an Assembly's books from nothing
-               repo/opening.ts   the opening position, and the difference in it
+               repo/opening.ts   the opening position, the difference in it, and
+                                 moving the wall backwards
                repo/audit.ts     the audit package, and what it cannot vouch for
                repo/handoff.ts   the export, and what has to pass between people
                repo/restore.ts   reading a bundle back in, and refusing to
@@ -257,7 +259,8 @@ src/
                YearContext.tsx   the year, fetched once and shared
   components/  AppShell, NineteenMonths, WhereMoneySits, NeedsAttention,
                NextFeast, Loading, ErrorPanel
-  pages/       SetupPage, YearDashboard, FeastReportPage, YearSummaryPage, LedgerPage,
+  pages/       SetupPage, OpeningPage, YearDashboard, FeastReportPage,
+               YearSummaryPage, LedgerPage,
                ImportPage, CashJournalPage, ReceiptsPage, FundsPage,
                RemittancePage, BudgetPage, ReconcilePage, AuditPage,
                HandoffPage, ReceiptPage
@@ -430,6 +433,44 @@ over-forwarded — and only one of them learned about openings. The dashboard sa
 held while the remittance screen refused to forward $250, with nothing on either screen to
 explain the contradiction. They now share one SQL expression, `fundHeldCents`, so they cannot
 drift again.
+
+**The opening date is a wall, and the importer enforces it.** A row dated before the books
+open is marked `before-opening` and never written, whatever the client asks. The reason is
+not tidiness: the opening balance already accounts for everything that happened before that
+day, so importing such a row counts the same money twice — once inside the opening figure
+and once as a transaction — and the books end up out by exactly the amount of history that
+was loaded. No index catches this, so the refusal is the only thing that does.
+
+**The wall moves backwards, and moving it leaves something to prove.** The previous year's
+cash journal turns up in a drawer, and an Assembly that cannot load it keeps two sets of
+records. `restateOpening` moves the date, restates what the accounts and funds held on the
+new earlier one, and writes down the figure the books used to open with as a *checkpoint*.
+
+That checkpoint is the point. After a restatement, every figure in the books derives from
+the restatement itself — except that one, which the Assembly had already accepted. The
+history imported behind the wall has to add up to it. `loadCheckpoints` computes the
+restated opening plus everything dated earlier than the old opening date and compares; when
+it does not land, the difference is the size of what is missing or duplicated, and it is
+disclosed in the audit package rather than left to be discovered. A checkpoint that fails is
+never resolved by moving the checkpoint. It is resolved by finding the transactions.
+
+Only backwards. Moving the date forwards would leave transactions already on the books
+sitting before a wall saying nothing before it counts — still in every total while claiming
+not to exist, which is worse than the state being fixed.
+
+**The Assembly's own fund has to be stated even though it is never stored.** It is the
+residual, so it has no row — but the unexplained remainder is derived as everything on hand
+less everything the funds claim, and omitting it from that subtraction does not mean nothing
+changes. It means the whole of the Assembly's own money is declared unaccounted for. The
+mistake is silent, catastrophic and entirely plausible: a form built from the table of
+stored openings does not think to ask for the one fund that has no entry in it. Both
+`setUpAssembly` and `restateOpening` refuse without it, and the guard was written after the
+restatement screen made exactly that mistake.
+
+**An opening balance is audited now.** `accounts` was the one table carrying money with no
+audit triggers on it, which was survivable only while nothing ever wrote to it after setup.
+Restatement writes to it, and it is the figure every later balance is built from, so a
+change to it that left no trace was not something to keep.
 
 **Reconciliation has no adjusting entry, and never will.** A plug makes the books agree with
 the bank while burying the reason they did not, and that reason is the entire point of the

@@ -28,7 +28,7 @@
 import type { Cents } from '../../lib/money'
 import type { SqlDatabase, SqlStatement } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
-import { entryStatement } from './opening'
+import { assertOwnFundStated, entryStatement } from './opening'
 
 export class SetupError extends Error {}
 
@@ -404,6 +404,14 @@ function validate(request: SetupRequest): void {
       throw new SetupError(`A balance was declared for "${key}", which is not a fund here.`)
     }
   }
+  assertOwnFundStated(
+    request.funds.map((f) => ({
+      key: f.key,
+      label: f.label,
+      is_passthrough: f.isPassthrough ? 1 : 0,
+    })),
+    request.declared,
+  )
 
   for (const category of request.categories) {
     if (category.fundKey && !keys.has(category.fundKey)) {

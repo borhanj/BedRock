@@ -41,12 +41,21 @@ import type {
   AuditPackageView,
 } from '../server/repo/audit'
 import type { HandoffStep, HandoffView } from '../server/repo/handoff'
-import type { OpeningPosition, ResolveRequest } from '../server/repo/opening'
+import type {
+  CheckpointView,
+  OpeningPosition,
+  ResolveRequest,
+  RestateRequest,
+  RestateResult,
+} from '../server/repo/opening'
 import type { SetupRequest, SetupResult } from '../server/repo/setup'
 import type { BundleReport, RestoreResult } from '../server/repo/restore'
 
 export type {
   OpeningPosition,
+  CheckpointView,
+  RestateRequest,
+  RestateResult,
   SetupRequest,
   SetupResult,
   AuditPackageView,
@@ -297,7 +306,11 @@ export interface SetupStatus {
  */
 export const fetchSetupStatus = () => call<SetupStatus>('/api/setup')
 
-export const fetchOpeningPosition = () => call<OpeningPosition>('/api/opening')
+export interface OpeningView extends OpeningPosition {
+  checkpoints: CheckpointView[]
+}
+
+export const fetchOpeningPosition = () => call<OpeningView>('/api/opening')
 
 export const forgetRule = (id: string) =>
   call<{ forgotten: boolean }>(`/api/rules/${encodeURIComponent(id)}`, {
@@ -310,6 +323,9 @@ export const openBooks = (body: SetupRequest) => post<SetupResult>('/api/setup',
 
 export const resolveOpeningDifference = (body: ResolveRequest) =>
   post<OpeningPosition>('/api/opening/resolve', body)
+
+export const restateOpening = (body: RestateRequest) =>
+  post<RestateResult>('/api/opening/restate', body)
 
 export const previewImport = (
   accountId: string,

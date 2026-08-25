@@ -87,9 +87,23 @@ describe('the audit trail is enforced by the database', () => {
         `INSERT INTO assemblies (id, name, short_name, created_at) VALUES ('a', 'A', 'A', 'x')`,
       ),
     ).resolves.toBeTruthy()
+
+    // An account carries an opening balance, so it is one of the tables that
+    // insists on an actor.
+    await expect(
+      bare.run(
+        `INSERT INTO accounts (id, assembly_id, name, kind) VALUES ('acc', 'a', 'Bank', 'bank')`,
+      ),
+    ).rejects.toThrow(/No audit actor set/)
+
+    await setAuditActor(bare, 'test')
     await bare.run(
       `INSERT INTO accounts (id, assembly_id, name, kind) VALUES ('acc', 'a', 'Bank', 'bank')`,
     )
+    // Back to a database where nobody is established, which is the state the
+    // trigger exists to refuse.
+    await bare.run('DELETE FROM audit_actor')
+
     await expect(
       bare.run(
         `INSERT INTO transactions
@@ -98,6 +112,25 @@ describe('the audit trail is enforced by the database', () => {
       ),
     ).rejects.toThrow(/No audit actor set/)
     bare.close()
+  })
+
+  // The figure every later balance is built from. It had no audit triggers at
+  // all until restatement needed to write to it, which meant it could be
+  // changed by anything with a SQL connection and leave nothing behind.
+  it('records a change to an opening balance', async () => {
+    await setAuditActor(db, 'treasurer@riverbend')
+    await db.run(
+      "UPDATE accounts SET opening_balance_cents = 999 WHERE assembly_id = ? AND kind = 'bank'",
+      [ASSEMBLY_ID],
+    )
+    const entry = await db.get<{ before_json: string; after_json: string; actor: string }>(
+      `SELECT before_json, after_json, actor FROM audit_log
+        WHERE entity = 'accounts' AND action = 'update'
+        ORDER BY id DESC LIMIT 1`,
+    )
+    expect(JSON.parse(entry!.after_json).opening_balance_cents).toBe(999)
+    expect(JSON.parse(entry!.before_json).opening_balance_cents).not.toBe(999)
+    expect(entry!.actor).toBe('treasurer@riverbend')
   })
 
   it('will not delete a receipt, because the numbering must stay gapless', async () => {

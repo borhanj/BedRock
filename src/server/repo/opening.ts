@@ -23,6 +23,13 @@
  * it. Every later figure in these books is measured from the opening position,
  * so moving one silently would change what every report has already said
  * without leaving a trace of what it said before.
+ *
+ * **The wall can move backwards, and moving it leaves a checkpoint.** The
+ * previous year's cash journal turns up in a drawer months later, and an
+ * Assembly that cannot load it keeps two sets of records. Restating the
+ * opening moves the date and the balances — and keeps the figure the Assembly
+ * had already accepted, at the date it was true, so the history loaded
+ * afterwards can be proved against it instead of merely assumed to fit.
  */
 
 import type { Cents } from '../../lib/money'
@@ -110,7 +117,11 @@ export async function loadOpeningPosition(
          FROM fund_openings o
          LEFT JOIN funds f ON f.id = o.fund_id
         WHERE o.assembly_id = ?
-        ORDER BY o.created_at, o.id`,
+        -- Insertion order. Sorting by id would put a correction before the
+        -- declaration it corrects, since "open-restate-" sorts before
+        -- "open-riverbend-", and created_at alone cannot separate rows written
+        -- in the same act.
+        ORDER BY o.created_at, o.rowid`,
       [assemblyId],
     ),
   ])
@@ -297,4 +308,312 @@ export function entryStatement(input: EntryInput): SqlStatement {
       input.now,
     ],
   }
+}
+
+
+export interface RestateRequest {
+  /** The new, earlier day the books open. */
+  readonly openedOn: string
+  /** What each account held immediately before the new date, by account id. */
+  readonly accounts: Readonly<Record<string, Cents>>
+  /** What each fund held on the new date, by fund key. */
+  readonly declared: Readonly<Record<string, Cents>>
+  readonly reason: string
+  readonly decidedBy: string
+}
+
+export interface RestateResult {
+  readonly openedOn: string
+  readonly previousOpenedOn: string
+  readonly onHandAtOpeningCents: Cents
+  readonly unexplainedCents: Cents
+  /** What the books said before, now standing as something to prove. */
+  readonly checkpoint: {
+    readonly asOf: string
+    readonly expectedCents: Cents
+  }
+}
+
+/**
+ * Move the opening date backwards and restate what was held on the new date.
+ *
+ * Only backwards. Moving it forwards would put transactions that are already
+ * on the books on the far side of a wall that says nothing before it counts —
+ * they would still be in every total while claiming not to exist, which is a
+ * worse state than the one being fixed.
+ *
+ * Three things happen together. The accounts are restated to what they held on
+ * the earlier date; the funds are restated to what they held then, as
+ * append-only corrections rather than edits; and the figure the books used to
+ * open with is written down as a checkpoint, because after this the old
+ * opening balance is no longer a starting point — it is a claim about a date,
+ * and the history about to be imported has to reproduce it.
+ */
+export async function restateOpening(
+  db: SqlDatabase,
+  assemblyId: string,
+  request: RestateRequest,
+  actor: string,
+  now: string,
+): Promise<RestateResult> {
+  if (!request.reason.trim()) {
+    throw new OpeningError('Restating the opening position needs a reason.')
+  }
+  if (!request.decidedBy.trim()) {
+    throw new OpeningError('Restating the opening position needs the name of whoever decided.')
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(request.openedOn)) {
+    throw new OpeningError('The opening date must be a calendar date, as yyyy-mm-dd.')
+  }
+
+  const assembly = await db.get<{ opened_on: string | null }>(
+    'SELECT opened_on FROM assemblies WHERE id = ?',
+    [assemblyId],
+  )
+  if (!assembly) throw new OpeningError('No such Assembly.')
+  const previousOpenedOn = assembly.opened_on
+  if (!previousOpenedOn) {
+    throw new OpeningError(
+      'These books record no opening date, so there is nothing to move. They predate ' +
+        'the setup process.',
+    )
+  }
+  if (request.openedOn >= previousOpenedOn) {
+    throw new OpeningError(
+      `The books already open on ${previousOpenedOn}. The date can only move earlier — ` +
+        'moving it later would leave transactions already on the books sitting before a ' +
+        'wall that says nothing before it counts, still in every total while claiming ' +
+        'not to exist.',
+    )
+  }
+
+  const accounts = await db.all<{ id: string; name: string; opening_balance_cents: number }>(
+    'SELECT id, name, opening_balance_cents FROM accounts WHERE assembly_id = ?',
+    [assemblyId],
+  )
+  for (const id of Object.keys(request.accounts)) {
+    if (!accounts.some((a) => a.id === id)) {
+      throw new OpeningError(`No account here has the id "${id}".`)
+    }
+  }
+
+  const funds = await db.all<{ id: string; key: string; label: string; is_passthrough: number }>(
+    'SELECT id, key, label, is_passthrough FROM funds WHERE assembly_id = ?',
+    [assemblyId],
+  )
+  for (const key of Object.keys(request.declared)) {
+    if (!funds.some((f) => f.key === key)) {
+      throw new OpeningError(`A balance was restated for "${key}", which is not a fund here.`)
+    }
+  }
+  assertOwnFundStated(funds, request.declared)
+
+  // What the books currently say they opened with. This becomes the claim the
+  // imported history has to land on, so it is read before anything changes.
+  const previousOpeningCents = accounts.reduce((sum, a) => sum + a.opening_balance_cents, 0)
+
+  const onHandAtOpeningCents = accounts.reduce(
+    (sum, a) => sum + (request.accounts[a.id] ?? a.opening_balance_cents),
+    0,
+  )
+  const declaredCents = Object.values(request.declared).reduce((sum, c) => sum + c, 0)
+  const unexplainedCents = onHandAtOpeningCents - declaredCents
+
+  const position = await loadOpeningPosition(db, assemblyId)
+  const currentByFund = new Map(position.funds.map((f) => [f.key, f.openingCents]))
+
+  await setAuditActor(db, actor)
+
+  const stamp = now.replace(/[^0-9]/g, '')
+  const statements: SqlStatement[] = [
+    {
+      sql: 'UPDATE assemblies SET opened_on = ? WHERE id = ?',
+      params: [request.openedOn, assemblyId],
+    },
+  ]
+
+  for (const account of accounts) {
+    const restated = request.accounts[account.id]
+    if (restated === undefined || restated === account.opening_balance_cents) continue
+    statements.push({
+      sql: 'UPDATE accounts SET opening_balance_cents = ? WHERE assembly_id = ? AND id = ?',
+      params: [restated, assemblyId, account.id],
+    })
+  }
+
+  // Corrections, not replacements: the sum is the answer, so each row carries
+  // the difference between what the fund was said to hold and what it is now
+  // said to have held on the earlier date.
+  for (const fund of funds) {
+    if (fund.is_passthrough !== 1) continue
+    const target = request.declared[fund.key] ?? 0
+    const delta = target - (currentByFund.get(fund.key) ?? 0)
+    if (delta === 0) continue
+    statements.push(
+      entryStatement({
+        id: `open-restate-${stamp}-${fund.key}`,
+        assemblyId,
+        fundId: fund.id,
+        amountCents: delta,
+        kind: 'restated',
+        reason: request.reason.trim(),
+        decidedBy: request.decidedBy.trim(),
+        occurredOn: request.openedOn,
+        now,
+      }),
+    )
+  }
+
+  const remainderDelta = unexplainedCents - position.unexplainedCents
+  if (remainderDelta !== 0) {
+    statements.push(
+      entryStatement({
+        id: `open-restate-${stamp}-remainder`,
+        assemblyId,
+        fundId: null,
+        amountCents: remainderDelta,
+        kind: 'restated',
+        reason: request.reason.trim(),
+        decidedBy: request.decidedBy.trim(),
+        occurredOn: request.openedOn,
+        now,
+      }),
+    )
+  }
+
+  statements.push({
+    sql: `INSERT INTO opening_checkpoints
+            (id, assembly_id, as_of, expected_cents, moved_to, reason, decided_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      `chk-${stamp}`,
+      assemblyId,
+      previousOpenedOn,
+      previousOpeningCents,
+      request.openedOn,
+      request.reason.trim(),
+      request.decidedBy.trim(),
+      now,
+    ],
+  })
+
+  await db.batch(statements)
+
+  return {
+    openedOn: request.openedOn,
+    previousOpenedOn,
+    onHandAtOpeningCents,
+    unexplainedCents,
+    checkpoint: { asOf: previousOpenedOn, expectedCents: previousOpeningCents },
+  }
+}
+
+export interface CheckpointView {
+  readonly id: string
+  readonly asOf: string
+  readonly movedTo: string
+  readonly reason: string
+  readonly decidedBy: string | null
+  /** What the books said they held immediately before `asOf`. */
+  readonly expectedCents: Cents
+  /** What they say now, with everything loaded since. */
+  readonly actualCents: Cents
+  readonly differenceCents: Cents
+  readonly holds: boolean
+}
+
+/**
+ * Every checkpoint, against what the books now say.
+ *
+ * This is the payoff for keeping them. A checkpoint holds when the restated
+ * opening plus everything dated before the old opening date lands exactly on
+ * the figure the Assembly had already accepted for that date. When it does
+ * not, the difference is the size of what is missing or duplicated in the
+ * history that was loaded — and the amount is usually the clue, the same way
+ * it is in a bank reconciliation.
+ *
+ * A checkpoint that does not hold is never resolved by moving the checkpoint.
+ * It is resolved by finding the transactions.
+ */
+export async function loadCheckpoints(
+  db: SqlDatabase,
+  assemblyId: string,
+): Promise<CheckpointView[]> {
+  const rows = await db.all<{
+    id: string
+    as_of: string
+    moved_to: string
+    reason: string
+    decided_by: string | null
+    expected_cents: number
+    actual_cents: number
+  }>(
+    // The balance immediately before `as_of`: what the accounts now open with,
+    // plus every transaction dated strictly earlier. Strictly, because an
+    // opening balance is the position before the day's first entry — the same
+    // boundary loadCashJournal uses.
+    `SELECT c.id, c.as_of, c.moved_to, c.reason, c.decided_by, c.expected_cents,
+            (SELECT COALESCE(SUM(a.opening_balance_cents), 0) FROM accounts a
+              WHERE a.assembly_id = c.assembly_id)
+          + (SELECT COALESCE(SUM(t.amount_cents), 0) FROM transactions t
+              WHERE t.assembly_id = c.assembly_id AND t.occurred_on < c.as_of)
+            AS actual_cents
+       FROM opening_checkpoints c
+      WHERE c.assembly_id = ?
+      ORDER BY c.as_of DESC, c.id`,
+    [assemblyId],
+  )
+
+  return rows.map((r) => ({
+    id: r.id,
+    asOf: r.as_of,
+    movedTo: r.moved_to,
+    reason: r.reason,
+    decidedBy: r.decided_by,
+    expectedCents: r.expected_cents,
+    actualCents: r.actual_cents,
+    differenceCents: r.actual_cents - r.expected_cents,
+    holds: r.actual_cents === r.expected_cents,
+  }))
+}
+
+/** The day before which nothing is part of these books, or null. */
+export async function openedOn(
+  db: SqlDatabase,
+  assemblyId: string,
+): Promise<string | null> {
+  const row = await db.get<{ opened_on: string | null }>(
+    'SELECT opened_on FROM assemblies WHERE id = ?',
+    [assemblyId],
+  )
+  return row?.opened_on ?? null
+}
+
+
+/**
+ * The Assembly's own fund has to be stated, even though it is never stored.
+ *
+ * It is the residual of the partition, so it has no row of its own — but the
+ * remainder is derived as everything on hand less everything the funds claim,
+ * and leaving it out of that subtraction does not mean "nothing changes". It
+ * means the whole of the Assembly's own money is declared unaccounted for.
+ *
+ * That is a silent, catastrophic and entirely plausible mistake: the figure is
+ * absent from every table of stored openings, so a form that lists what is
+ * stored will not think to ask for it. Refusing is the only way the caller
+ * finds out.
+ */
+export function assertOwnFundStated(
+  funds: ReadonlyArray<{ key: string; label: string; is_passthrough: number }>,
+  declared: Readonly<Record<string, Cents>>,
+): void {
+  const own = funds.find((f) => f.is_passthrough === 0)
+  if (!own) return
+  if (own.key in declared) return
+
+  throw new OpeningError(
+    `Say what the ${own.label} held as well. It is the one fund with no stored figure — ` +
+      'it is whatever is left over — so it is worked out by subtraction, and leaving it ' +
+      'out would declare every penny of the Assembly’s own money unaccounted for.',
+  )
 }

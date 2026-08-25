@@ -3,7 +3,12 @@ import { bahaiYear as bahaiYearFor } from '../calendar/badi'
 import { sumCents } from '../lib/money'
 import { migrate } from './db/migrate'
 import { openNodeDatabase, type NodeSqlDatabase } from './db/node-sqlite'
-import { loadOpeningPosition, resolveUnexplained } from './repo/opening'
+import {
+  loadCheckpoints,
+  loadOpeningPosition,
+  resolveUnexplained,
+  restateOpening,
+} from './repo/opening'
 import {
   setUpAssembly,
   setupStatus,
@@ -11,6 +16,9 @@ import {
   type SetupRequest,
 } from './repo/setup'
 import { loadFunds, recordRemittance } from './repo/funds'
+import { commitImport, previewImport } from './repo/import'
+import { loadAuditPackage } from './repo/audit'
+import type { ColumnMapping } from './import/mapping'
 import { loadYear } from './repo/year'
 import { exportEverything } from './repo/handoff'
 import { restore } from './repo/restore'
@@ -48,6 +56,8 @@ const ON_HAND = BANK_CENTS + CASH_CENTS
 const DECLARED_LOCAL = 400_000
 const DECLARED_NATIONAL = 25_000
 const GAP = ON_HAND - DECLARED_LOCAL - DECLARED_NATIONAL
+/** The Local Fund on 1 July: its 1 August figure, back across the July rows. */
+const RESTATED_LOCAL = DECLARED_LOCAL - 12_000 + 35_000
 
 const REQUEST: SetupRequest = {
   assemblyName: 'Riverbend Local Spiritual Assembly',
@@ -149,6 +159,12 @@ describe('opening the books', () => {
 
   it('refuses somewhere with no money in it at all', async () => {
     await expect(open(db, { accounts: [] })).rejects.toThrow(/somewhere to keep money/)
+  })
+
+  it('refuses to open without saying what the Assembly’s own fund holds', async () => {
+    await expect(open(db, { declared: { national: DECLARED_NATIONAL } })).rejects.toThrow(
+      /Say what the Local Fund held as well/,
+    )
   })
 
   it('refuses a balance declared for a fund that is not there', async () => {
@@ -416,5 +432,324 @@ describe('an opened book handed to a successor', () => {
     // Including the part nobody could explain, which is exactly the fact a
     // successor most needs carried across.
     expect((await loadOpeningPosition(target, ID)).unexplainedCents).toBe(GAP)
+  })
+})
+
+const MAPPING: ColumnMapping = {
+  date: 0,
+  dateFormat: 'ymd',
+  description: 1,
+  amount: { kind: 'single', column: 2 },
+}
+
+/** A statement whose rows straddle the day the books opened. */
+const STRADDLING = [
+  'Date,Description,Amount',
+  '2026-07-14,EARLIER DEPOSIT,120.00',
+  '2026-07-20,EARLIER RENT,-350.00',
+  '2026-08-03,HALL RENTAL,-450.00',
+  '2026-08-11,ONLINE TRANSFER FROM MEMBER,315.00',
+].join('\n')
+
+const bankId = (db: NodeSqlDatabase) =>
+  db
+    .get<{ id: string }>("SELECT id FROM accounts WHERE assembly_id = ? AND kind = 'bank'", [ID])
+    .then((r) => r!.id)
+
+describe('a statement that reaches back before the books opened', () => {
+  let db: NodeSqlDatabase
+  beforeEach(async () => {
+    db = await fresh()
+    await open(db)
+  })
+
+  // The opening balance already accounts for everything before the wall.
+  // Importing a row from before it counts the same money twice — once inside
+  // the opening figure and once as a transaction — and the books end up out by
+  // exactly the amount of history that was loaded.
+  it('marks the rows before the wall rather than importing them', async () => {
+    const preview = await previewImport(db, ID, await bankId(db), STRADDLING, MAPPING)
+    expect(preview.openedOn).toBe(OPENED)
+    expect(preview.counts.beforeOpening).toBe(2)
+    expect(preview.counts.fresh).toBe(2)
+
+    const verdicts = preview.rows.map((r) => `${r.occurredOn} ${r.verdict}`)
+    expect(verdicts).toEqual([
+      '2026-07-14 before-opening',
+      '2026-07-20 before-opening',
+      '2026-08-03 new',
+      '2026-08-11 new',
+    ])
+  })
+
+  it('refuses to write them even when the client accepts every row', async () => {
+    const accountId = await bankId(db)
+    const preview = await previewImport(db, ID, accountId, STRADDLING, MAPPING)
+
+    const result = await commitImport(db, ID, {
+      accountId,
+      filename: 'straddling.csv',
+      mapping: MAPPING,
+      csvText: STRADDLING,
+      // Everything, including the two the treasurer was told are outside.
+      accept: preview.rows.map((r) => r.dedupeHash),
+      actor: ACTOR,
+      now: NOW,
+    })
+
+    expect(result.imported).toBe(2)
+    const landed = await db.all<{ occurred_on: string }>(
+      'SELECT occurred_on FROM transactions WHERE assembly_id = ? ORDER BY occurred_on',
+      [ID],
+    )
+    expect(landed.map((r) => r.occurred_on)).toEqual(['2026-08-03', '2026-08-11'])
+
+    // And the books moved by the two rows that were inside, not by all four.
+    const view = await loadFunds(db, ID, YEAR)
+    expect(view.onHandCents).toBe(ON_HAND - 45_000 + 31_500)
+  })
+
+  it('lets them in once the wall has moved behind them', async () => {
+    const accountId = await bankId(db)
+    await restateOpening(
+      db, ID,
+      {
+        openedOn: '2026-07-01',
+        accounts: { [accountId]: BANK_CENTS - 12_000 + 35_000 },
+        declared: { local: RESTATED_LOCAL, national: DECLARED_NATIONAL },
+        reason: "Last year's cash journal was found in the safe",
+        decidedBy: 'the Assembly, minuted 3 ʿIzzat',
+      },
+      ACTOR, NOW,
+    )
+
+    const preview = await previewImport(db, ID, accountId, STRADDLING, MAPPING)
+    expect(preview.counts.beforeOpening).toBe(0)
+    expect(preview.counts.fresh).toBe(4)
+  })
+})
+
+describe('moving the opening date backwards', () => {
+  let db: NodeSqlDatabase
+  let accountId: string
+  beforeEach(async () => {
+    db = await fresh()
+    await open(db)
+    accountId = await bankId(db)
+  })
+
+  const restate = (over: Record<string, unknown> = {}) =>
+    restateOpening(
+      db, ID,
+      {
+        openedOn: '2026-07-01',
+        accounts: { [accountId]: BANK_CENTS - 12_000 + 35_000 },
+        declared: { local: RESTATED_LOCAL, national: DECLARED_NATIONAL },
+        reason: "Last year's cash journal was found in the safe",
+        decidedBy: 'the Assembly, minuted 3 ʿIzzat',
+        ...over,
+      },
+      ACTOR, NOW,
+    )
+
+  it('moves the wall and keeps what the books used to say', async () => {
+    const result = await restate()
+    expect(result.openedOn).toBe('2026-07-01')
+    expect(result.previousOpenedOn).toBe(OPENED)
+    // The figure the Assembly had already accepted for the old date.
+    expect(result.checkpoint).toEqual({ asOf: OPENED, expectedCents: ON_HAND })
+    expect((await loadOpeningPosition(db, ID)).openedOn).toBe('2026-07-01')
+  })
+
+  // Forwards would leave transactions already on the books sitting before a
+  // wall that says nothing before it counts — still in every total while
+  // claiming not to exist.
+  it('refuses to move forwards', async () => {
+    await expect(restate({ openedOn: '2026-09-01' })).rejects.toThrow(/only move earlier/)
+  })
+
+  it('refuses to move to the same day', async () => {
+    await expect(restate({ openedOn: OPENED })).rejects.toThrow(/only move earlier/)
+  })
+
+  // The mistake this guard exists for is silent and catastrophic. The
+  // Assembly's own fund has no stored figure — it is the residual — so a form
+  // built from the table of stored openings does not think to ask for it, and
+  // leaving it out declares the Assembly's entire balance unaccounted for.
+  // This was written after doing exactly that.
+  it('refuses to restate without saying what the Assembly’s own fund held', async () => {
+    await expect(restate({ declared: { national: DECLARED_NATIONAL } })).rejects.toThrow(
+      /Say what the Local Fund held as well/,
+    )
+  })
+
+  it('keeps the remainder where it was when the funds are restated consistently', async () => {
+    const before = (await loadOpeningPosition(db, ID)).unexplainedCents
+    await restate()
+    expect((await loadOpeningPosition(db, ID)).unexplainedCents).toBe(before)
+  })
+
+  it('refuses without a reason or a name', async () => {
+    await expect(restate({ reason: '  ' })).rejects.toThrow(/needs a reason/)
+    await expect(restate({ decidedBy: '' })).rejects.toThrow(/whoever decided/)
+  })
+
+  it('corrects the funds by appending, never by editing', async () => {
+    await restate({ declared: { local: RESTATED_LOCAL, national: 40_000 } })
+    const position = await loadOpeningPosition(db, ID)
+    expect(position.funds.find((f) => f.key === 'national')?.openingCents).toBe(40_000)
+    // Two rows, not one changed one: what was declared and what corrected it.
+    const national = position.entries.filter((e) => e.fundLabel === 'National Fund')
+    expect(national.map((e) => e.kind)).toEqual(['declared', 'restated'])
+    expect(national.map((e) => e.amountCents)).toEqual([DECLARED_NATIONAL, 15_000])
+  })
+
+  it('records the change of opening balance in the audit trail', async () => {
+    await restate()
+    const entry = await db.get<{ before_json: string; after_json: string }>(
+      `SELECT before_json, after_json FROM audit_log
+        WHERE entity = 'accounts' AND action = 'update' ORDER BY id DESC LIMIT 1`,
+    )
+    expect(JSON.parse(entry!.before_json).opening_balance_cents).toBe(BANK_CENTS)
+    expect(JSON.parse(entry!.after_json).opening_balance_cents).toBe(BANK_CENTS - 12_000 + 35_000)
+  })
+
+  it('will not let a checkpoint be edited away', async () => {
+    await restate()
+    await expect(
+      db.run('UPDATE opening_checkpoints SET expected_cents = 0 WHERE assembly_id = ?', [ID]),
+    ).rejects.toThrow(/cannot be edited/)
+    await expect(
+      db.run('DELETE FROM opening_checkpoints WHERE assembly_id = ?', [ID]),
+    ).rejects.toThrow(/cannot be deleted/)
+  })
+})
+
+describe('proving the restated books against what they used to say', () => {
+  let db: NodeSqlDatabase
+  let accountId: string
+
+  beforeEach(async () => {
+    db = await fresh()
+    await open(db)
+    accountId = await bankId(db)
+  })
+
+  // The whole reason a checkpoint is kept. The bank held $4,312.18 on 1 August.
+  // Move the wall to 1 July, say it held $4,192.18 then, and the two July rows
+  // (+$120.00 and -$350.00) have to bring it back to $4,312.18 — they do not
+  // unless the restated figure is right, and the difference is the size of
+  // what is missing.
+  it('holds when the history loaded lands on the old figure', async () => {
+    await restateOpening(
+      db, ID,
+      {
+        openedOn: '2026-07-01',
+        // 4312.18 - 120.00 + 350.00
+        accounts: { [accountId]: BANK_CENTS - 12_000 + 35_000 },
+        declared: { local: RESTATED_LOCAL, national: DECLARED_NATIONAL },
+        reason: "Last year's cash journal was found in the safe",
+        decidedBy: 'the Assembly',
+      },
+      ACTOR, NOW,
+    )
+
+    const preview = await previewImport(db, ID, accountId, STRADDLING, MAPPING)
+    await commitImport(db, ID, {
+      accountId,
+      filename: 'straddling.csv',
+      mapping: MAPPING,
+      csvText: STRADDLING,
+      accept: preview.rows.map((r) => r.dedupeHash),
+      actor: ACTOR,
+      now: NOW,
+    })
+
+    const [checkpoint] = await loadCheckpoints(db, ID)
+    expect(checkpoint.expectedCents).toBe(ON_HAND)
+    expect(checkpoint.differenceCents).toBe(0)
+    expect(checkpoint.holds).toBe(true)
+  })
+
+  it('says by how much when the history does not add up', async () => {
+    await restateOpening(
+      db, ID,
+      {
+        openedOn: '2026-07-01',
+        // Out by $40: a plausible restated figure that the July rows will not
+        // reproduce.
+        accounts: { [accountId]: BANK_CENTS - 12_000 + 35_000 + 4_000 },
+        declared: { local: RESTATED_LOCAL, national: DECLARED_NATIONAL },
+        reason: 'Restated from the June statement',
+        decidedBy: 'the Assembly',
+      },
+      ACTOR, NOW,
+    )
+
+    const preview = await previewImport(db, ID, accountId, STRADDLING, MAPPING)
+    await commitImport(db, ID, {
+      accountId,
+      filename: 'straddling.csv',
+      mapping: MAPPING,
+      csvText: STRADDLING,
+      accept: preview.rows.map((r) => r.dedupeHash),
+      actor: ACTOR,
+      now: NOW,
+    })
+
+    const [checkpoint] = await loadCheckpoints(db, ID)
+    expect(checkpoint.holds).toBe(false)
+    expect(checkpoint.differenceCents).toBe(4_000)
+  })
+
+  it('is disclosed in the audit package rather than left to be found', async () => {
+    await restateOpening(
+      db, ID,
+      {
+        openedOn: '2026-07-01',
+        accounts: { [accountId]: BANK_CENTS + 4_000 },
+        declared: { local: RESTATED_LOCAL, national: DECLARED_NATIONAL },
+        reason: 'Restated from the June statement',
+        decidedBy: 'the Assembly',
+      },
+      ACTOR, NOW,
+    )
+
+    const pack = await loadAuditPackage(db, ID, YEAR, TODAY, ACTOR)
+    expect(pack!.gaps.map((g) => g.key)).toContain('opening-checkpoint')
+    expect(pack!.checkpoints[0].holds).toBe(false)
+  })
+})
+
+describe('what the audit package says about an unexplained opening', () => {
+  it('discloses money no fund claims', async () => {
+    const db = await fresh()
+    await open(db)
+    const pack = await loadAuditPackage(db, ID, YEAR, TODAY, ACTOR)
+    const gap = pack!.gaps.find((g) => g.key === 'opening-unexplained')
+    expect(gap?.label).toContain('$149.68')
+    expect(gap?.consequence).toContain('kept out of the Local Fund')
+  })
+
+  it('says the opposite thing when the funds claim more than is held', async () => {
+    const db = await fresh()
+    await open(db, {
+      accounts: [{ name: 'Bank', kind: 'bank' as const, openingBalanceCents: 100_000 }],
+      declared: { local: 90_000, national: 25_000 },
+    })
+    const pack = await loadAuditPackage(db, ID, YEAR, TODAY, ACTOR)
+    const gap = pack!.gaps.find((g) => g.key === 'opening-unexplained')
+    expect(gap?.label).toContain('more than the Assembly holds')
+    expect(gap?.consequence).toContain('appears to have been spent')
+  })
+
+  it('says nothing at all when the books opened clean', async () => {
+    const db = await fresh()
+    await open(db, {
+      accounts: [{ name: 'Bank', kind: 'bank' as const, openingBalanceCents: 100_000 }],
+      declared: { local: 75_000, national: 25_000 },
+    })
+    const pack = await loadAuditPackage(db, ID, YEAR, TODAY, ACTOR)
+    expect(pack!.gaps.map((g) => g.key)).not.toContain('opening-unexplained')
   })
 })
