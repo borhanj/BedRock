@@ -35,8 +35,16 @@ import type {
   ReconciliationSummary,
   ReconciliationView,
 } from '../server/repo/reconcile'
+import type {
+  AuditCheck,
+  AuditGap,
+  AuditPackageView,
+} from '../server/repo/audit'
 
 export type {
+  AuditPackageView,
+  AuditCheck,
+  AuditGap,
   ReconciliationView,
   ReconciliationSummary,
   ReconcileItemView,
@@ -129,6 +137,10 @@ export function fetchLedger(query: LedgerQuery = {}): Promise<LedgerRow[]> {
 
 export const fetchCashJournal = (year: number | 'current' = 'current') =>
   call<CashJournal>(`/api/cash/${year}`)
+
+/** Everything an auditor asks for, drawn against the database on request. */
+export const fetchAuditPackage = (year: number | 'current' = 'current') =>
+  call<AuditPackageView>(`/api/audit/${year}`)
 
 // ── bank reconciliation ──────────────────────────────────────────────────────
 

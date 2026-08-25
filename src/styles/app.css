@@ -874,6 +874,219 @@ a {
   .bd-line__track {
     border: 1px solid var(--bd-report-rule);
   }
+
+  /* The audit package is a paper document first. Sections are kept off page
+     breaks where they can be, and the ledger is allowed to run across pages
+     because it always will. */
+  .bd-page {
+    padding: 0;
+  }
+
+  .bd-pack__block {
+    break-inside: avoid;
+  }
+
+  .bd-pack__table {
+    break-inside: auto;
+  }
+
+  .bd-pack__table thead {
+    display: table-header-group;
+  }
+}
+
+/* ── the audit package (Phase 7) ───────────────────────────────────────────
+   White ground, unlike the Feast report. That one is projected in a room and
+   is dark for it; this one is read on paper across a table, and inverting it
+   would drink toner for eight pages. */
+
+.bd-pack {
+  max-width: var(--bd-report-max);
+  margin: 0 auto;
+  padding: var(--bd-gap-lg);
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  color: var(--bd-text);
+}
+
+.bd-pack__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--bd-gap);
+  flex-wrap: wrap;
+  padding-bottom: var(--bd-gap);
+  border-bottom: 2px solid var(--bd-ink);
+}
+
+.bd-pack__eyebrow {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+}
+
+.bd-pack__title {
+  margin-top: 4px;
+  font: 400 25px var(--bd-font-serif);
+}
+
+.bd-pack__meta {
+  font: 400 11.5px/1.5 var(--bd-font-sans);
+  color: var(--bd-muted);
+  text-align: right;
+}
+
+.bd-pack__block {
+  margin-top: var(--bd-gap-lg);
+}
+
+.bd-pack__blockhead {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-pack__note,
+.bd-pack__aside {
+  margin-top: 8px;
+  font: 400 12px/1.5 var(--bd-font-sans);
+  color: var(--bd-muted);
+  max-width: 68ch;
+}
+
+.bd-pack__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--bd-gap-lg);
+}
+
+.bd-pack__figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--bd-gap);
+  margin-top: 12px;
+}
+
+.bd-pack__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bd-pack__figurelabel {
+  font: 400 10.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-pack__figurevalue {
+  font: 400 19px var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-pack__table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font: 400 12px var(--bd-font-sans);
+}
+
+.bd-pack__table th {
+  text-align: left;
+  padding: 6px 8px;
+  font: 600 9px var(--bd-font-sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-pack__table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-pack__table tfoot td {
+  border-top: 2px solid var(--bd-border-strong);
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.bd-pack__table .bd-table__num {
+  text-align: right;
+  font-family: var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-pack__foot {
+  margin-top: var(--bd-gap-lg);
+  padding-top: var(--bd-gap);
+  border-top: 2px solid var(--bd-ink);
+  font: 400 11.5px/1.55 var(--bd-font-sans);
+  color: var(--bd-muted);
+  max-width: 78ch;
+}
+
+/* ── the checks, and the gaps ──────────────────────────────────────────── */
+
+.bd-checks {
+  margin-top: 12px;
+  list-style: none;
+}
+
+.bd-check {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-check__mark {
+  font: 400 15px var(--bd-font-serif);
+  color: var(--bd-positive);
+  text-align: center;
+}
+
+/* A failed check is a finding, which is what an audit is for — clay, not a
+   siren. The word beside it does the work. */
+.bd-check--failed .bd-check__mark,
+.bd-check--failed .bd-check__verdict {
+  color: var(--bd-expense-text);
+}
+
+.bd-check--gap .bd-check__mark {
+  color: var(--bd-attention);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-check__label {
+  display: block;
+  font: 400 13px var(--bd-font-sans);
+  color: var(--bd-text);
+}
+
+.bd-check__detail {
+  display: block;
+  margin-top: 2px;
+  font: 400 11.5px/1.45 var(--bd-font-sans);
+  color: var(--bd-muted);
+  max-width: 68ch;
+}
+
+.bd-check__verdict {
+  font: 400 11px var(--bd-font-sans);
+  color: var(--bd-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .bd-pack__cols {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ── ledger, import and cash journal (Phase 3) ─────────────────────────── */

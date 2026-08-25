@@ -11,6 +11,7 @@ import { bahaiYear as bahaiYearFor, CalendarRangeError } from '../calendar/badi'
 import type { SqlDatabase } from './db/adapter'
 import { setAuditActor } from './db/adapter'
 import { loadYear } from './repo/year'
+import { loadAuditPackage } from './repo/audit'
 import {
   ensureReport,
   finalizeReport,
@@ -285,6 +286,14 @@ async function route(
       ),
       201,
     )
+  }
+
+  // ── the audit package ──────────────────────────────────────────────────
+  const audit = /^audit\/(\d+|current)$/.exec(path)
+  if (audit && method === 'GET') {
+    const resolved = audit[1] === 'current' ? bahaiYearFor(ctx.today) : Number(audit[1])
+    const view = await loadAuditPackage(db, assemblyId, resolved, ctx.today, ctx.actor)
+    return view ? json(view) : json({ error: 'No such assembly' }, 404)
   }
 
   // ── bank reconciliation ────────────────────────────────────────────────

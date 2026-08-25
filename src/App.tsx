@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/AppShell'
 import YearDashboard from './pages/YearDashboard'
 import FeastReportPage from './pages/FeastReportPage'
-import Placeholder from './pages/Placeholder'
 import LedgerPage, { LedgerLayout } from './pages/LedgerPage'
 import ImportPage from './pages/ImportPage'
 import CashJournalPage from './pages/CashJournalPage'
@@ -12,11 +11,12 @@ import FundsPage, { FundsLayout, FundLedgerPage } from './pages/FundsPage'
 import RemittancePage from './pages/RemittancePage'
 import BudgetPage from './pages/BudgetPage'
 import ReconcilePage, { ReconcileDetailPage } from './pages/ReconcilePage'
+import AuditPage from './pages/AuditPage'
 
 /**
- * The nav is the six destinations from the source design. Those not yet built
- * are honest placeholders naming the phase that fills them in, rather than
- * dead links.
+ * The nav is the six destinations from the source design, all of them now
+ * built. The placeholder component that stood in for the unbuilt ones is gone
+ * with the last of them.
  */
 export default function App() {
   return (
@@ -39,15 +39,7 @@ export default function App() {
         </Route>
         <Route path="receipts" element={<ReceiptsPage />} />
         <Route path="budget" element={<BudgetPage />} />
-        <Route
-          path="audit"
-          element={
-            <Placeholder
-              title="Audit"
-              body="The one-click Audit Package: full ledger, category summaries, bank reconciliation, receipt log and the source documents behind every line. Phase 7."
-            />
-          }
-        />
+        <Route path="audit" element={<AuditPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

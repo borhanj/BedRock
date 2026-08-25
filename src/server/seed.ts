@@ -12,6 +12,7 @@
 import { monthsForYear, toDayIndex, toISODate } from '../calendar/badi'
 import type { SqlDatabase } from './db/adapter'
 import { setAuditActor } from './db/adapter'
+import { ensureReport, finalizeReport, presentReport } from './repo/report'
 
 export const ASSEMBLY_ID = 'riverbend'
 export const SEED_YEAR = 183
@@ -460,32 +461,19 @@ export async function seed(db: SqlDatabase): Promise<void> {
   //
   // Months 1-7 were presented at their Feast. Kamál's report is built but not
   // yet read out, which is the state the design illustrates.
+  //
+  // Driven through the real lifecycle rather than inserted as finished rows.
+  // Closing the books freezes the figures into a snapshot, and a hand-written
+  // 'presented' row has no snapshot to freeze — so it would silently recompute
+  // live, and a later correction to a closed month would quietly rewrite a
+  // report the community has already heard. That is the one behaviour the
+  // report design exists to prevent, and seeding around it would have left the
+  // worked example demonstrating the opposite.
   for (let month = 1; month <= 8; month++) {
-    const period = periods.find((p) => p.monthNumber === month)!
-    const presented = month <= 7
-    await db.run(
-      `INSERT INTO reports
-         (id, assembly_id, bahai_year, month_number, cutoff_start, cutoff_end,
-          status, finalized_at, finalized_by, presented_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'seed', ?)`,
-      [
-        `rep-${ASSEMBLY_ID}-${SEED_YEAR}-${month}`, ASSEMBLY_ID, SEED_YEAR, month,
-        period.startDate, period.endDate,
-        presented ? 'presented' : 'ready',
-        NOW,
-        presented ? NOW : null,
-      ],
-    )
-
-    // A presented month is closed: its transactions are locked, and reopening
-    // it is an explicit act. Kamál's report is built but not yet read out, so
-    // its rows stay editable.
-    if (presented) {
-      await db.run(
-        `UPDATE transactions SET is_locked = 1
-          WHERE assembly_id = ? AND occurred_on BETWEEN ? AND ?`,
-        [ASSEMBLY_ID, period.startDate, period.endDate],
-      )
+    await ensureReport(db, ASSEMBLY_ID, SEED_YEAR, month, 'seed')
+    await finalizeReport(db, ASSEMBLY_ID, SEED_YEAR, month, 'seed', NOW)
+    if (month <= 7) {
+      await presentReport(db, ASSEMBLY_ID, SEED_YEAR, month, 'seed', NOW)
     }
   }
 }
