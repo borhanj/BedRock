@@ -131,13 +131,12 @@ export async function exportEverything(
 ): Promise<HandoffBundle> {
   const tables: Record<string, Record<string, SqlValue>[]> = {}
 
+  // Not every table carries assembly_id — reconciliation_items hangs off a
+  // reconciliation, and audit_actor is excluded above. Which ones do is asked
+  // once rather than per table, and scoping is done where it can be rather
+  // than guessing a column name and silently exporting nothing.
   for (const table of TABLES) {
-    // Not every table carries assembly_id — reconciliation_items hangs off a
-    // reconciliation, and audit_actor is excluded above. Scope where we can
-    // and take the lot where we cannot, rather than silently exporting
-    // nothing for a table whose column name was guessed wrong.
-    const scoped = await hasColumn(db, table, 'assembly_id')
-    tables[table] = scoped
+    tables[table] = isScoped(table)
       ? await db.all(`SELECT * FROM ${table} WHERE assembly_id = ?`, [assemblyId])
       : await db.all(`SELECT * FROM ${table}`)
   }
@@ -151,16 +150,61 @@ export async function exportEverything(
   }
 }
 
-async function hasColumn(
+/**
+ * The two tables that do not carry `assembly_id`.
+ *
+ * Stated rather than asked, and that is a deliberate retreat from asking the
+ * schema. Two attempts at deriving it both worked in `node:sqlite` and failed
+ * only against D1: `sqlite_master` is refused by the authorizer the Worker's
+ * binding runs behind (`not authorized: SQLITE_AUTH`), and a UNION ALL of
+ * twenty `pragma_table_info` calls exceeds D1's limit on compound SELECT
+ * terms. The remaining derived option is one pragma round trip per table,
+ * which is the slowness this was trying to remove.
+ *
+ * So it is a constant — and `handoff.test.ts` checks it against the live
+ * schema, where pragma queries are free. The list can still drift; the test is
+ * what stops it drifting silently.
+ */
+const UNSCOPED_TABLES = new Set(['assemblies', 'reconciliation_items'])
+
+/** Exposed so the tests can hold it against the real schema. */
+export function tablesWithoutAssemblyId(): ReadonlySet<string> {
+  return UNSCOPED_TABLES
+}
+
+function isScoped(table: string): boolean {
+  return !UNSCOPED_TABLES.has(table)
+}
+
+/**
+ * Row counts for every table in one query.
+ *
+ * Scalar subqueries in a single row rather than a UNION ALL, because D1 caps
+ * how many terms a compound SELECT may have and twenty is past it. This is
+ * also the shape the rest of the codebase already uses for multi-count
+ * queries — see `loadAttention`.
+ */
+async function countAll(
   db: SqlDatabase,
-  table: string,
-  column: string,
-): Promise<boolean> {
-  const row = await db.get<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM pragma_table_info(?) WHERE name = ?`,
-    [table, column],
+  assemblyId: string,
+): Promise<Record<string, number>> {
+  // Table names come from RESTORE_ORDER, a constant in this file, so there is
+  // nothing here for a caller to inject.
+  const columns = TABLES.map((t) =>
+    isScoped(t)
+      ? `(SELECT COUNT(*) FROM ${t} WHERE assembly_id = ?) AS ${t}`
+      : `(SELECT COUNT(*) FROM ${t}) AS ${t}`,
   )
-  return (row?.n ?? 0) > 0
+  const params = TABLES.filter(isScoped).map(() => assemblyId)
+
+  const row = await db.get<Record<string, number>>(
+    `SELECT ${columns.join(', ')}`,
+    params,
+  )
+
+  const counts: Record<string, number> = {}
+  for (const table of TABLES) counts[table] = row?.[table] ?? 0
+  return counts
 }
 
 export async function loadHandoff(
@@ -176,17 +220,7 @@ export async function loadHandoff(
   )
   if (!assembly) return null
 
-  const counts: Record<string, number> = {}
-  for (const table of TABLES) {
-    const scoped = await hasColumn(db, table, 'assembly_id')
-    const row = scoped
-      ? await db.get<{ n: number }>(
-          `SELECT COUNT(*) AS n FROM ${table} WHERE assembly_id = ?`,
-          [assemblyId],
-        )
-      : await db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)
-    counts[table] = row?.n ?? 0
-  }
+  const counts = await countAll(db, assemblyId)
 
   return {
     assemblyName: assembly.name,

@@ -422,6 +422,22 @@ in it are the database's rules rather than preferences: budget lines go in befor
 (an approved year refuses new lines), and reconciliations go in open and are balanced at the
 end (a balanced one refuses changes to what has cleared).
 
+**D1 is not the SQLite the tests run against, and the differences only appear in
+production.** Three of them have bitten this project, each one passing every test and
+failing on deploy:
+
+- A trigger body containing `CASE ... END;` is split in half by wrangler before it reaches
+  D1. `WHEN` clauses instead.
+- `sqlite_master` is refused by the authorizer the Worker's binding runs behind —
+  `not authorized: SQLITE_AUTH`. `pragma_table_info` is allowed.
+- A compound `SELECT` has a low cap on terms. Twenty `UNION ALL` branches is past it; a
+  single row of scalar subqueries is not.
+
+`wrangler d1 execute` is **not** a reliable check for any of this: it goes through the admin
+API, which allows things the Worker binding does not — `sqlite_master` works there and fails
+in the Worker. The only honest check is to deploy and call the endpoint. When touching SQL
+that is unusual in any way, do that before assuming a green suite means anything.
+
 **A query against D1 is a network round trip, and they add up.** In `node:sqlite` a query
 costs microseconds, so a loop of them is invisible in the tests; against D1 each one crosses
 a network and the same loop is seconds. Two places had it badly. `loadYearSummary` called
@@ -432,8 +448,12 @@ month and took 1.8s.
 Both are fixed the way the dashboard already worked and the way this file already prescribes:
 the database returns daily sums over the whole year and the nineteen months are bucketed in
 TypeScript. The audit package additionally asks which months have a frozen snapshot — only
-those can drift — and recomputes them together rather than one after another. Summary
-1095ms → 149ms; audit 1817ms → 645ms, on the deployed instance.
+those can drift — and recomputes them together rather than one after another. The
+handover checklist had the same shape twice over — a pragma lookup and a count query per
+table, forty round trips for 2.9kB.
+
+Measured on the deployed instance, steady state: summary 1095ms → 183ms, audit 1817ms →
+771ms, the handover checklist 617ms → 111ms, the export 635ms → 301ms.
 
 The rule worth keeping: **a loop that queries per month is a bug against D1 even when the
 tests are instant.**

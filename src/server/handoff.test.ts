@@ -5,6 +5,8 @@ import {
   exportEverything,
   HANDOFF_SCHEMA_VERSION,
   loadHandoff,
+  RESTORE_ORDER,
+  tablesWithoutAssemblyId,
 } from './repo/handoff'
 import { createDonor, setupVault } from './repo/donors'
 import { handleApi } from './api'
@@ -201,5 +203,46 @@ describe('the handoff API', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     const body = await response.json()
     expect(body.tables.transactions).toHaveLength(85)
+  })
+})
+
+describe('the scoping constant', () => {
+  let db: NodeSqlDatabase
+  beforeEach(async () => {
+    db = await freshDatabase()
+  })
+
+  it('still matches the schema', async () => {
+    // Which tables carry assembly_id is stated as a constant rather than asked
+    // of the database, because both ways of asking it work in node:sqlite and
+    // fail against D1 — sqlite_master is refused by the Worker's authorizer,
+    // and twenty UNION ALL terms exceed D1's compound SELECT limit. This test
+    // is the thing that keeps the constant honest, and it can afford to ask
+    // properly because pragma queries are free here.
+    const actual = new Set<string>()
+    for (const table of RESTORE_ORDER) {
+      const row = await db.get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM pragma_table_info(?) WHERE name = 'assembly_id'`,
+        [table],
+      )
+      if ((row?.n ?? 0) === 0) actual.add(table)
+    }
+    expect([...actual].sort()).toEqual([...tablesWithoutAssemblyId()].sort())
+  })
+
+  it('scopes the export to one Assembly wherever it can', async () => {
+    // A second Assembly's rows must not ride along in someone else's export.
+    await db.run(
+      `INSERT INTO assemblies (id, name, short_name, created_at)
+       VALUES ('elsewhere', 'Another Assembly', 'Elsewhere', '2026-01-01T00:00:00Z')`,
+    )
+    await db.run(
+      `INSERT INTO accounts (id, assembly_id, name, kind, opening_balance_cents)
+       VALUES ('acct-elsewhere', 'elsewhere', 'Their bank', 'bank', 999)`,
+    )
+
+    const bundle = await exportEverything(db, ASSEMBLY_ID, NOW, ACTOR)
+    expect(bundle.tables.accounts.map((a) => a.id)).not.toContain('acct-elsewhere')
+    expect(bundle.tables.accounts).toHaveLength(2)
   })
 })
