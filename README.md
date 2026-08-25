@@ -84,6 +84,11 @@ All six nav destinations are built. There are no placeholders left.
 worked year of 183 B.E. Signing in is required for the API; the static shell is public and
 useless without it.
 
+It is a personal test deployment and holds no real Assembly's books — only the fictional
+Riverbend fixture. Wipe it, reseed it or redeploy over it freely. The Access tenant carries
+some walterpmoore.com addresses from unrelated use; this project is not connected to that
+work.
+
 The dev server uses an in-memory database, so nothing persists between restarts. Set
 `BEDROCK_DEV_DB` to a file path to keep data across restarts, which is worth doing while
 working on the import flow.
@@ -125,7 +130,12 @@ if it does not, start there rather than with new work.
 
 ### Next, in order
 
-Every phase in the original plan is built, and it is deployed. What is left is below.
+Every phase in the original plan is built, and it is deployed. Nothing is half-finished and
+no work is mid-flight — the tree is clean at `a5990e4`. Pick from the lists below.
+
+The single highest-value next thing is probably **the importer for the export file**: the
+handoff writes a complete versioned bundle that nothing can yet read back, which makes the
+"restore from backup" half of continuity a claim rather than a capability.
 
 ### Before it holds a real Assembly's books
 
