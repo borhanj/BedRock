@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Accounting for the treasurer of a Bahá'í Local Spiritual Assembly.",
+  "description": "Accounting for the treasurer of a Bah\u00e1'\u00ed Local Spiritual Assembly.",
   "scripts": {
     "dev": "vite",
+    "dev:empty": "node scripts/dev-empty.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",

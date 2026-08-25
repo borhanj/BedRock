@@ -61,6 +61,8 @@ import {
   setBudgetLine,
 } from './repo/budget'
 import { forgetRule, listRules } from './repo/rules'
+import { loadOpeningPosition, resolveUnexplained, OpeningError } from './repo/opening'
+import { setUpAssembly, setupStatus, SetupError } from './repo/setup'
 import {
   changeSecret,
   createAnonymousDonor,
@@ -160,7 +162,9 @@ export async function handleApi(
       error instanceof RemittanceError ||
       error instanceof BudgetError ||
       error instanceof ReconcileError ||
-      error instanceof RestoreError
+      error instanceof RestoreError ||
+      error instanceof SetupError ||
+      error instanceof OpeningError
     ) {
       return json({ error: error.message }, 409)
     }
@@ -187,6 +191,74 @@ async function route(
   url: URL,
 ): Promise<Response | null> {
   const { db, assemblyId } = ctx
+
+  // ── opening the books ──────────────────────────────────────────────────
+  //
+  // First, because every other route below assumes an Assembly that these two
+  // are what create. `GET setup` is the only one that answers usefully against
+  // an empty database, which is how the browser knows to offer setup rather
+  // than a dashboard of nothing.
+  if (path === 'setup' && method === 'GET') {
+    return json(await setupStatus(db, assemblyId))
+  }
+
+  if (path === 'setup' && method === 'POST') {
+    const body = (await request.json()) as {
+      assemblyName?: string
+      shortName?: string
+      openedOn?: string
+      funds?: Array<{ key: string; label: string; isPassthrough: boolean }>
+      accounts?: Array<{ name: string; kind: 'bank' | 'cash'; openingBalanceCents: number }>
+      categories?: Array<{ label: string; kind: 'income' | 'expense'; fundKey?: string }>
+      declared?: Record<string, number>
+      declaredBy?: string
+    }
+    return json(
+      await setUpAssembly(
+        db, assemblyId,
+        {
+          assemblyName: required(body.assemblyName, 'assemblyName'),
+          shortName: body.shortName || required(body.assemblyName, 'assemblyName'),
+          openedOn: body.openedOn || ctx.today,
+          funds: body.funds ?? [],
+          accounts: body.accounts ?? [],
+          categories: body.categories ?? [],
+          declared: body.declared ?? {},
+          declaredBy: body.declaredBy || ctx.actor,
+        },
+        ctx.actor, ctx.now,
+      ),
+      201,
+    )
+  }
+
+  // ── the opening position, and the gap in it ────────────────────────────
+  if (path === 'opening' && method === 'GET') {
+    return json(await loadOpeningPosition(db, assemblyId))
+  }
+
+  if (path === 'opening/resolve' && method === 'POST') {
+    const body = (await request.json()) as {
+      amountCents?: number
+      toFundKey?: string | null
+      reason?: string
+      decidedBy?: string
+      occurredOn?: string
+    }
+    return json(
+      await resolveUnexplained(
+        db, assemblyId,
+        {
+          amountCents: Number(required(body.amountCents, 'amountCents')),
+          toFundKey: body.toFundKey ?? null,
+          reason: required(body.reason, 'reason'),
+          decidedBy: required(body.decidedBy, 'decidedBy'),
+          occurredOn: body.occurredOn || ctx.today,
+        },
+        ctx.actor, ctx.now,
+      ),
+    )
+  }
 
   // ── the year ───────────────────────────────────────────────────────────
   const year = /^year\/(\d+|current)$/.exec(path)

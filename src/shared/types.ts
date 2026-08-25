@@ -23,6 +23,15 @@ export interface FundBalanceView {
   readonly balanceCents: number
   /** Held for another institution and owed upward. */
   readonly isPassthrough: boolean
+  /**
+   * Money on hand at opening that no fund claimed, and that nobody has yet
+   * decided about. Present only when there is some — an Assembly whose books
+   * opened clean never sees this row. It is carried separately rather than
+   * folded into the Local Fund, which is what would otherwise happen, because
+   * the Local Fund is the residual of this partition and would absorb it
+   * without saying so.
+   */
+  readonly isUnexplained?: boolean
 }
 
 export interface AttentionView {

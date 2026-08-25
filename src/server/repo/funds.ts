@@ -34,6 +34,11 @@ export interface FundFlowView {
   readonly forwardedCents: Cents
   /** Held now. The same figure, from the same query, as the dashboard card. */
   readonly balanceCents: Cents
+  /**
+   * The opening remainder, which is not a fund and has no sub-ledger. See
+   * repo/opening.ts.
+   */
+  readonly isUnexplained?: boolean
 }
 
 export interface RemittanceView {
@@ -59,6 +64,25 @@ export interface FundsView {
 }
 
 /**
+ * What a pass-through fund holds, as SQL.
+ *
+ * A shared expression rather than two queries that are supposed to agree,
+ * because they did not. The partition below learned that a fund can open with
+ * a balance; `recordRemittance` kept its own copy of the arithmetic and did
+ * not. The result was a dashboard showing the National Fund holding $250 and a
+ * remittance screen refusing to forward $250 from it, with nothing on either
+ * screen to explain the contradiction.
+ *
+ * `fundRef` is how the fund is named at the call site — a correlated column in
+ * the partition, a bound parameter in the single-fund check. Every call site
+ * passes a literal.
+ */
+const fundHeldCents = (fundRef: string) => `
+    COALESCE((SELECT SUM(o.amount_cents) FROM fund_openings o WHERE o.fund_id = ${fundRef}), 0)
+  + COALESCE((SELECT SUM(c.amount_cents) FROM contributions c WHERE c.fund_id = ${fundRef}), 0)
+  - COALESCE((SELECT SUM(r.amount_cents) FROM remittances r   WHERE r.fund_id = ${fundRef}), 0)`
+
+/**
  * Where the money sits, as a partition of what is on hand.
  *
  * The rows have to sum to the on-hand balance or the card is lying, so they
@@ -68,64 +92,80 @@ export interface FundsView {
  *   cash box           — the physical cash, less any pass-through money in it
  *   Local Fund         — the residual, i.e. what the Assembly may actually spend
  *
+ *   unexplained        — on hand at opening that no fund claimed, if any
+ *   Local Fund         — the residual, i.e. what the Assembly may actually spend
+ *
  * Treating the Local Fund as the remainder is also the honest reading: it is
- * whatever is left once other institutions' money and the cash tin are set
- * aside.
+ * whatever is left once other institutions' money, the cash tin and anything
+ * unaccounted for are set aside.
  *
  * The cash row nets out pass-through money sitting in the tin. A National Fund
  * gift dropped in the cash box at Feast is already counted by the National
  * row; without this subtraction the cash row would count it a second time, and
  * the Local Fund — being the residual — would absorb the difference as a
  * shortfall that never happened.
+ *
+ * The unexplained row exists for the same reason and is the sharper case. When
+ * an Assembly opens its books, what the bank holds and what the funds claim
+ * rarely agree, and the difference has to go somewhere. Being the residual,
+ * the Local Fund takes it silently unless something stops it — so the opening
+ * remainder is carved out here and carried under its own name until the
+ * Assembly decides what it is. See repo/opening.ts. The row is absent, not
+ * zero, when there is nothing unaccounted for: a line reading nil on every
+ * Assembly's dashboard forever is how a real one stops being read.
  */
 export async function loadFundBalances(
   db: SqlDatabase,
   assemblyId: string,
   onHandCents: Cents,
 ): Promise<FundBalanceView[]> {
-  const rows = await db.all<{
-    key: string
-    label: string
-    is_passthrough: number
-    balance_cents: number
-  }>(
-    `SELECT f.key, f.label, f.is_passthrough,
-            COALESCE((SELECT SUM(c.amount_cents) FROM contributions c WHERE c.fund_id = f.id), 0)
-          - COALESCE((SELECT SUM(r.amount_cents) FROM remittances r WHERE r.fund_id = f.id), 0)
-            AS balance_cents
-       FROM funds f
-      WHERE f.assembly_id = ?
-      ORDER BY f.sort_order`,
-    [assemblyId],
-  )
+  // Two round trips, not four. Against D1 each of these crosses a network, and
+  // this partition is on the dashboard's critical path.
+  const [rows, totals] = await Promise.all([
+    db.all<{
+      key: string
+      label: string
+      is_passthrough: number
+      balance_cents: number
+    }>(
+      `SELECT f.key, f.label, f.is_passthrough,
+              ${fundHeldCents('f.id')} AS balance_cents
+         FROM funds f
+        WHERE f.assembly_id = ?
+        ORDER BY f.sort_order`,
+      [assemblyId],
+    ),
+    db.get<{ cash_cents: number; in_tin_cents: number; unexplained_cents: number }>(
+      `SELECT
+         COALESCE((SELECT SUM(a.opening_balance_cents) FROM accounts a
+                    WHERE a.assembly_id = ? AND a.kind = 'cash'), 0)
+       + COALESCE((SELECT SUM(t.amount_cents) FROM transactions t
+                    JOIN accounts ca ON ca.id = t.account_id
+                   WHERE ca.assembly_id = ? AND ca.kind = 'cash'), 0) AS cash_cents,
+         -- Pass-through money physically in the tin: gifts to another
+         -- institution's fund received in cash, less anything forwarded out of
+         -- a cash account.
+         COALESCE((SELECT SUM(c.amount_cents)
+                     FROM contributions c
+                     JOIN transactions t ON t.id = c.transaction_id
+                     JOIN accounts a ON a.id = t.account_id
+                     JOIN funds f ON f.id = c.fund_id
+                    WHERE c.assembly_id = ? AND a.kind = 'cash' AND f.is_passthrough = 1), 0)
+       - COALESCE((SELECT SUM(r.amount_cents)
+                     FROM remittances r
+                     JOIN transactions t ON t.id = r.transaction_id
+                     JOIN accounts a ON a.id = t.account_id
+                    WHERE r.assembly_id = ? AND a.kind = 'cash'), 0) AS in_tin_cents,
+         -- On hand at opening that no fund claimed, less whatever has since
+         -- been accounted for. A NULL fund_id is what marks it.
+         COALESCE((SELECT SUM(o.amount_cents) FROM fund_openings o
+                    WHERE o.assembly_id = ? AND o.fund_id IS NULL), 0) AS unexplained_cents`,
+      [assemblyId, assemblyId, assemblyId, assemblyId, assemblyId],
+    ),
+  ])
 
-  const cash = await db.get<{ cents: number }>(
-    `SELECT COALESCE((SELECT SUM(a.opening_balance_cents) FROM accounts a
-                       WHERE a.assembly_id = ? AND a.kind = 'cash'), 0)
-          + COALESCE((SELECT SUM(t.amount_cents) FROM transactions t
-                       JOIN accounts ca ON ca.id = t.account_id
-                      WHERE ca.assembly_id = ? AND ca.kind = 'cash'), 0) AS cents`,
-    [assemblyId, assemblyId],
-  )
-
-  // Pass-through money physically in the tin: gifts to another institution's
-  // fund received in cash, less anything forwarded out of a cash account.
-  const inTin = await db.get<{ cents: number }>(
-    `SELECT COALESCE((SELECT SUM(c.amount_cents)
-                        FROM contributions c
-                        JOIN transactions t ON t.id = c.transaction_id
-                        JOIN accounts a ON a.id = t.account_id
-                        JOIN funds f ON f.id = c.fund_id
-                       WHERE c.assembly_id = ? AND a.kind = 'cash' AND f.is_passthrough = 1), 0)
-          - COALESCE((SELECT SUM(r.amount_cents)
-                        FROM remittances r
-                        JOIN transactions t ON t.id = r.transaction_id
-                        JOIN accounts a ON a.id = t.account_id
-                       WHERE r.assembly_id = ? AND a.kind = 'cash'), 0) AS cents`,
-    [assemblyId, assemblyId],
-  )
-
-  const cashCents = (cash?.cents ?? 0) - (inTin?.cents ?? 0)
+  const cashCents = (totals?.cash_cents ?? 0) - (totals?.in_tin_cents ?? 0)
+  const unexplainedCents = totals?.unexplained_cents ?? 0
 
   const passthrough = rows.filter((r) => r.is_passthrough === 1)
   const passthroughTotal = passthrough.reduce((sum, r) => sum + r.balance_cents, 0)
@@ -135,7 +175,7 @@ export async function loadFundBalances(
     {
       key: local?.key ?? 'local',
       label: local?.label ?? 'Local Fund',
-      balanceCents: onHandCents - passthroughTotal - cashCents,
+      balanceCents: onHandCents - passthroughTotal - cashCents - unexplainedCents,
       isPassthrough: false,
     },
     ...passthrough.map((r) => ({
@@ -145,6 +185,18 @@ export async function loadFundBalances(
       isPassthrough: true,
     })),
     { key: 'cash', label: 'Cash box', balanceCents: cashCents, isPassthrough: false },
+    // Absent when nil, so the row means something every time it appears.
+    ...(unexplainedCents !== 0
+      ? [
+          {
+            key: 'unexplained',
+            label: 'Unaccounted for at opening',
+            balanceCents: unexplainedCents,
+            isPassthrough: false,
+            isUnexplained: true,
+          },
+        ]
+      : []),
   ]
 }
 
@@ -215,6 +267,7 @@ export async function loadFunds(
     key: b.key,
     label: b.label,
     isPassthrough: b.isPassthrough,
+    isUnexplained: b.isUnexplained,
     receivedCents: b.key === 'cash' ? 0 : (received.get(b.key) ?? 0),
     spentCents: b.key === 'cash' ? 0 : (spent.get(b.key) ?? 0),
     forwardedCents: b.key === 'cash' ? 0 : (forwarded.get(b.key) ?? 0),
@@ -476,9 +529,8 @@ export async function recordRemittance(
   if (!account) throw new RemittanceError('No such account.')
 
   const held = await db.get<{ cents: number }>(
-    `SELECT COALESCE((SELECT SUM(amount_cents) FROM contributions WHERE fund_id = ?), 0)
-          - COALESCE((SELECT SUM(amount_cents) FROM remittances WHERE fund_id = ?), 0) AS cents`,
-    [fund.id, fund.id],
+    `SELECT ${fundHeldCents('?')} AS cents`,
+    [fund.id, fund.id, fund.id],
   )
   const outstanding = held?.cents ?? 0
   if (input.amountCents > outstanding) {

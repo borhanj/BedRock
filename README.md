@@ -31,6 +31,7 @@ npm run dev
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Dev server. Honours `PORT`. |
+| `npm run dev:empty` | Dev server with no worked year — what a new Assembly sees |
 | `npm test` | Calendar, money and fixture-integrity suites |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run check:contrast` | Fails if any palette pairing drops below WCAG AA |
@@ -78,7 +79,14 @@ Reading one back in is on the same screen: choosing a file inspects it and write
 and the restore is offered only once the file and the target both allow it. Plus a printable
 receipt at `/receipts/:id` to hand someone.
 
-All six nav destinations are built. There are no placeholders left.
+**Phase 8 — opening the books.** Setting up an Assembly from nothing, at `/setup`: the
+funds it keeps, where its money is, and what the outgoing treasurer says each fund holds.
+Where those figures disagree — which is the normal case, not the exceptional one — the
+difference is carried as its own line rather than absorbed, and accounting for it later is
+a recorded Assembly decision. A fresh deployment redirects here instead of failing.
+
+All six nav destinations are built, plus setup outside them. There are no placeholders
+left.
 
 ### It is deployed
 
@@ -135,7 +143,7 @@ Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **319 passing**;
+Everything below is current as of the last commit. `npm test` should show **365 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
@@ -143,19 +151,31 @@ if it does not, start there rather than with new work.
 Every phase in the original plan is built, and it is deployed. Nothing is half-finished and
 no work is mid-flight. Pick from the lists below.
 
-The export/restore round trip now closes, so continuity is a capability rather than a claim.
-What is left is mostly hardening: narrowing the Access policy, the R2 binding for receipt
-images, and meeting a real bank's CSV.
+An Assembly can now open its own books, so the software no longer requires a fictional
+community to be usable. What is left is mostly hardening: narrowing the Access policy, the
+R2 binding for receipt images, and meeting a real bank's CSV.
+
+Setup takes opening balances and nothing else. Two things it does not yet do, both of which
+the schema is already shaped for: importing a CSV of transactions from earlier in the year,
+and moving the opening date backwards when the previous year's cash journal turns up. The
+wall exists (`assemblies.opened_on`) and `fund_openings` already has a `restated` kind for
+exactly that act — neither is wired up.
 
 ### Before it holds a real Assembly's books
 
 **The Access policy is too wide.** It currently admits any member of the Cloudflare account.
 It should name the treasurer(s). Everything else about the auth chain is in place.
 
-**Nothing has been exercised at volume.** The worked year is 85 transactions. Nothing here
-has met a real CSV from a real bank. Measuring against the deployed D1 did surface and fix
-the two worst scaling problems — see *A query against D1 is a network round trip* below —
-but the ledger, the import preview and the receipt book have not been looked at the same way.
+**Nothing has met a real bank's CSV.** The worked year is 85 transactions, and no statement
+any actual bank exports has been through this. What a statement *costs* is now settled — the
+import, the commit and the restore no longer issue a query per row, and tests hold them to
+it — but that is a different claim from having read a real file. The formats, the preamble,
+the date order and the way a particular bank writes a description are all still unmet.
+
+**The read paths at volume have not all been looked at.** The dashboard, the year summary and
+the audit package were measured against the deployed D1 and fixed. The ledger and the receipt
+book have not been measured the same way. Both are single queries, so neither has the shape
+that went wrong before — but "has the right shape" is not "was measured".
 
 ### Smaller things left undone
 
@@ -195,12 +215,6 @@ value above 12 settles the question — and reports **ambiguous** where it canno
 control and refusing to let the guess pass unexamined. Getting this wrong moves transactions
 between Feast periods and silently changes what a report says.
 
-**The identity in `worker.ts` is not yet authentication.** It reads the email header
-Cloudflare Access forwards, which anyone who can reach the Worker directly can simply set
-themselves. Verifying `Cf-Access-Jwt-Assertion` against the team's public keys, and locking
-ingress to Access, are both required before this is exposed. Until then it is attribution for
-the audit log, nothing more. See the comment on `identify()`.
-
 ## Layout
 
 ```
@@ -212,9 +226,10 @@ src/
                year-progress.ts  the dashboard headline
   shared/      types.ts          the Worker/browser contract, imported by both
   server/      api.ts            one runtime-agnostic Request -> Response
+               access.ts         the Access JWT, verified
                seed.ts           a worked year of 183 B.E. as real rows
                dev-plugin.ts     mounts the API into Vite dev
-               db/adapter.ts     the SqlDatabase interface
+               db/adapter.ts     the SqlDatabase interface, and batched writes
                db/node-sqlite.ts dev and tests
                db/d1.ts          production
                db/migrate.ts     Node-only runner; wrangler does this in prod
@@ -232,6 +247,8 @@ src/
                repo/funds.ts     sub-ledgers, the fund partition, remittance
                repo/budget.ts    planned against actual, and next year's draft
                repo/reconcile.ts the statement, ticked off
+               repo/setup.ts     opening an Assembly's books from nothing
+               repo/opening.ts   the opening position, and the difference in it
                repo/audit.ts     the audit package, and what it cannot vouch for
                repo/handoff.ts   the export, and what has to pass between people
                repo/restore.ts   reading a bundle back in, and refusing to
@@ -240,14 +257,14 @@ src/
                YearContext.tsx   the year, fetched once and shared
   components/  AppShell, NineteenMonths, WhereMoneySits, NeedsAttention,
                NextFeast, Loading, ErrorPanel
-  pages/       YearDashboard, FeastReportPage, LedgerPage,
+  pages/       SetupPage, YearDashboard, FeastReportPage, YearSummaryPage, LedgerPage,
                ImportPage, CashJournalPage, ReceiptsPage, FundsPage,
                RemittancePage, BudgetPage, ReconcilePage, AuditPage,
                HandoffPage, ReceiptPage
   styles/      tokens.css        the palette — semantic names only
                app.css           layout; no hex literals
 worker.ts      Cloudflare Worker entry
-scripts/       check-contrast.mjs
+scripts/       check-contrast.mjs, dev-empty.mjs
 ```
 
 ## Design notes
@@ -295,6 +312,17 @@ The ordinal is what makes two genuine $20 withdrawals on the same day two rows r
 one — and counting it within the file rather than against the database is what makes a second
 import of the same file reproduce the same keys and match. Offsetting by the existing row
 count seems more intuitive and breaks idempotence completely.
+
+The parts of the key are joined on NUL, because a separator has to be a character a bank
+cannot put in a description. Joined on a space, account `acct 1` dated `2026-08-02` and
+account `acct` dated `1 2026-08-02` are the same string and so the same hash. It is written
+`\u0000` rather than as the byte itself: a literal NUL makes git treat the whole file as
+binary and stop diffing it, which is what it had been doing since the file was written.
+
+A test also freezes one known hash against its literal value. Every row on file is stored
+under a hash this function produced, so changing how the key is built means the next statement
+matches nothing, re-imports in full, and doubles the books. That change is allowed to be made;
+it is not allowed to be made by accident.
 
 **Learned rules suggest; they never apply.** Categorising a row records an exact-match rule on
 the normalised payee, and the next statement carrying that payee arrives with the category
@@ -357,6 +385,51 @@ means normal. Being under budget mid-year is not an achievement and does not rea
 the account with no matching expense line, so a plain income total would overstate what the
 Assembly can spend by exactly the amount it owes upward. Income categories name the fund they
 feed (`categories.fund_id`), and goals for other funds are shown separately.
+
+**The books open on a stated day, and the difference is a row rather than a plug.** A
+treasurer taking over has a bank statement, a tin, and a page from their predecessor saying
+what belongs to which fund. Those three rarely agree, and the disagreement is the most
+interesting thing about them. Setup records what is stated and carries the remainder as its
+own line — *Unaccounted for at opening* — belonging to no fund, until the Assembly decides
+what it is.
+
+It has to be carried explicitly, because the alternative is not "nothing happens". The Local
+Fund is the residual of the partition, so an unexplained difference silently becomes part of
+what the Assembly believes it can spend. Carving it out is what stops that, and it is the
+same principle as `completeReconciliation` refusing a plug, reached from the other direction.
+
+The remainder is signed and both signs happen. Positive is money on hand nobody has accounted
+for, usually an unrecorded deposit. Negative is worse — the funds claim more than the
+Assembly holds, which generally means money earmarked for another institution has been spent
+on something else. Reporting the absolute value would hide which of those a treasurer is
+looking at.
+
+Nothing about it blocks setup. An Assembly whose inherited books do not balance has to be
+able to say so and start work; a form that refuses to continue until the figures agree
+teaches a treasurer to invent a number, and an invented number is indistinguishable from a
+real one afterwards.
+
+**Accounting for it later is an Assembly's decision, and it is append-only.** Resolving the
+remainder takes a stated reason and the name of whoever decided — usually the Assembly,
+minuted, not the person at the keyboard. Part of it can be settled and the rest left
+standing, because finding the missing deposit and still not explaining the last $42 is the
+normal shape of this. `fund_openings` refuses UPDATE and DELETE through triggers: every later
+figure in the books is measured from the opening position, so an edit would move what every
+report has already been computed against and leave no trace of what it was.
+
+**Exactly one fund is the Assembly's own, and that is structural.** `loadFundBalances` builds
+the partition by treating the single non-pass-through fund as the residual. A second one
+would never appear in the partition at all and its money would be silently absorbed by the
+first — with no error a treasurer could ever see. Setup refuses it, and says why.
+
+**A pass-through fund can open holding money.** Without that, the first time a new Assembly
+forwarded a National Fund contribution it had received before installing Bedrock, it was told
+it had never received it. Fixing that surfaced a second problem worth recording: the balance
+was computed in two places — the partition, and `recordRemittance`'s check that a fund is not
+over-forwarded — and only one of them learned about openings. The dashboard said $250 was
+held while the remittance screen refused to forward $250, with nothing on either screen to
+explain the contradiction. They now share one SQL expression, `fundHeldCents`, so they cannot
+drift again.
 
 **Reconciliation has no adjusting entry, and never will.** A plug makes the books agree with
 the bank while burying the reason they did not, and that reason is the entire point of the
@@ -463,8 +536,28 @@ table, forty round trips for 2.9kB.
 Measured on the deployed instance, steady state: summary 1095ms → 183ms, audit 1817ms →
 771ms, the handover checklist 617ms → 111ms, the export 635ms → 301ms.
 
-The rule worth keeping: **a loop that queries per month is a bug against D1 even when the
-tests are instant.**
+The same shape appears on the write side, and there it is worse than slow. `commitImport`
+wrote a row per line of the statement; `restore` wrote a row per row of the bundle. A Worker
+is allowed a bounded number of subrequests per invocation and D1 queries count against it, so
+past a certain size those did not take longer — they stopped, part way through. A
+thousand-line statement is an ordinary thing for a bank to export, and a bundle carrying a
+real year is thousands of rows once the audit trail is in it.
+
+`SqlDatabase.batch` is the answer: the caller hands over every statement it means to write and
+the implementation sends them in chunks of a hundred, one request each, each chunk a
+transaction. Counted rather than timed, on the worked year: previewing a 500-line statement
+went from 502 round trips to **3**, committing it from about 1,000 to **9**, and restoring a
+1,721-row bundle from about 1,730 to **21**. Tests assert the counts stay flat as the row count
+rises, which is the property that matters — the millisecond figures above were measured
+against the deployed instance, and these have not been.
+
+The trap to know before reaching for the obvious alternative: **D1 caps a single statement at
+100 bound parameters**, so one INSERT with a thousand placeholders is not available. It breaks
+around the twentieth row of a wide table. Many statements in one request is the shape that
+works; one enormous statement is not.
+
+The rule worth keeping: **a loop that queries per row or per month is a bug against D1 even
+when the tests are instant.**
 
 **A restore goes into an empty place.** It will not merge into live books and it will not
 overwrite them, and the refusal is about the target rather than the file — a perfectly sound
@@ -474,9 +567,10 @@ was meant to save.
 
 Everything is checked before anything is written: shape, format version, whole-cent money,
 and every reference between tables, so a truncated file fails before it is half loaded.
-That matters more than usual because D1 exposes no interactive transaction through
-`SqlDatabase`, so a failure part way through really would leave a partial database. The
-pre-flight makes that unlikely and the empty-target rule makes it recoverable.
+That matters more than usual because the restore as a whole is not atomic: the rows go in as
+batches of a hundred, and while a batch either lands or does not, a failure half way through
+leaves the batches that already committed. The pre-flight makes that unlikely and the
+empty-target rule makes it recoverable.
 
 A newer bundle is refused outright rather than partially read. Loading only the parts this
 version understands would produce books that look whole and are not.

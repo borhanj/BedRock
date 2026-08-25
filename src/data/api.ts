@@ -41,9 +41,14 @@ import type {
   AuditPackageView,
 } from '../server/repo/audit'
 import type { HandoffStep, HandoffView } from '../server/repo/handoff'
+import type { OpeningPosition, ResolveRequest } from '../server/repo/opening'
+import type { SetupRequest, SetupResult } from '../server/repo/setup'
 import type { BundleReport, RestoreResult } from '../server/repo/restore'
 
 export type {
+  OpeningPosition,
+  SetupRequest,
+  SetupResult,
   AuditPackageView,
   AuditCheck,
   AuditGap,
@@ -270,12 +275,41 @@ export const fetchChoices = () => call<Choices>('/api/choices')
 
 export const fetchRules = () => call<RuleView[]>('/api/rules')
 
+export interface SetupStatus {
+  assemblyId: string
+  isSetUp: boolean
+  assemblyName: string | null
+  openedOn: string | null
+  suggestedFunds: ReadonlyArray<{
+    key: string
+    label: string
+    isPassthrough: boolean
+    note: string
+  }>
+  suggestedCategories: ReadonlyArray<{ label: string; kind: 'income' | 'expense' }>
+}
+
+/**
+ * The one call that answers before there are any books.
+ *
+ * Everything else on this page assumes an Assembly exists. This is how the
+ * shell finds out whether one does.
+ */
+export const fetchSetupStatus = () => call<SetupStatus>('/api/setup')
+
+export const fetchOpeningPosition = () => call<OpeningPosition>('/api/opening')
+
 export const forgetRule = (id: string) =>
   call<{ forgotten: boolean }>(`/api/rules/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 
 // ── writing ──────────────────────────────────────────────────────────────────
+
+export const openBooks = (body: SetupRequest) => post<SetupResult>('/api/setup', body)
+
+export const resolveOpeningDifference = (body: ResolveRequest) =>
+  post<OpeningPosition>('/api/opening/resolve', body)
 
 export const previewImport = (
   accountId: string,

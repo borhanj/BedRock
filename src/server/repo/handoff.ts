@@ -24,7 +24,15 @@ import { monthsForYear, nawRuz } from '../../calendar/badi'
 import type { SqlDatabase, SqlValue } from '../db/adapter'
 
 /** Bumped when the shape of an export changes in a way an importer must know. */
-export const HANDOFF_SCHEMA_VERSION = 1
+/**
+ * 2 — added `fund_openings`, the opening position.
+ *
+ * Bumped because a bundle written after that table existed carries figures a
+ * reader without it would silently drop, and dropping them moves every fund
+ * balance in the file. Older bundles still load: a version this build has
+ * never heard of is refused, a version it has outgrown is not.
+ */
+export const HANDOFF_SCHEMA_VERSION = 2
 
 /** Something that has to pass between two people, not between two databases. */
 export interface HandoffStep {
@@ -77,6 +85,9 @@ export const RESTORE_ORDER = [
   'assemblies',
   'accounts',
   'funds',
+  // After funds, which it references, and before anything that reads a fund
+  // balance: what a fund opened with is part of what it holds.
+  'fund_openings',
   'categories',
   'donors',
   'import_batches',

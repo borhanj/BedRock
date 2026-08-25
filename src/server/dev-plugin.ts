@@ -8,6 +8,11 @@
  * It is in-memory by default, so a restart gives a clean known state. Set
  * BEDROCK_DEV_DB to a file path to keep data across restarts, which is worth
  * doing while working on the import flow.
+ *
+ * Set BEDROCK_DEV_EMPTY=1 to skip the seed and get what a treasurer installing
+ * this actually gets: the schema and nothing in it. It is the only way to
+ * reach the setup screen, since a seeded database is by definition already set
+ * up. `npm run dev:empty` does it.
  */
 
 import type { Connect, Plugin } from 'vite'
@@ -23,8 +28,15 @@ async function build(): Promise<NodeSqlDatabase> {
   const ran = await migrate(db)
   // Only seed a database that has just been created, or a file-backed one
   // would gain a second copy of the worked year on every restart.
+  const empty = process.env.BEDROCK_DEV_EMPTY === '1'
   const seeded = await db.get<{ n: number }>('SELECT COUNT(*) AS n FROM assemblies')
-  if ((seeded?.n ?? 0) === 0) await seed(db)
+  if (empty) {
+    if ((seeded?.n ?? 0) === 0) {
+      console.log('[bedrock] no worked year — open the books at /setup')
+    }
+  } else if ((seeded?.n ?? 0) === 0) {
+    await seed(db)
+  }
   if (ran.length > 0 && location !== ':memory:') {
     console.log(`[bedrock] applied ${ran.join(', ')} to ${location}`)
   }

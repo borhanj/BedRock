@@ -7,6 +7,13 @@
       "runtimeArgs": ["node_modules/vite/bin/vite.js"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "bedrock-empty",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-empty.mjs"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

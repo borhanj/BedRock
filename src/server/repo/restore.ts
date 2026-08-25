@@ -75,6 +75,10 @@ const REFERENCES: ReadonlyArray<{
   { from: 'accounts', column: 'assembly_id', to: 'assemblies' },
   { from: 'funds', column: 'assembly_id', to: 'assemblies' },
   { from: 'categories', column: 'assembly_id', to: 'assemblies' },
+  { from: 'fund_openings', column: 'assembly_id', to: 'assemblies' },
+  // Optional: a null fund_id is the unexplained remainder, which belongs to
+  // no fund by definition. See repo/opening.ts.
+  { from: 'fund_openings', column: 'fund_id', to: 'funds', optional: true },
   { from: 'categories', column: 'fund_id', to: 'funds', optional: true },
   { from: 'transactions', column: 'account_id', to: 'accounts' },
   { from: 'transactions', column: 'fund_id', to: 'funds', optional: true },
