@@ -41,6 +41,7 @@ import type {
   AuditPackageView,
 } from '../server/repo/audit'
 import type { HandoffStep, HandoffView } from '../server/repo/handoff'
+import type { BundleReport, RestoreResult } from '../server/repo/restore'
 
 export type {
   AuditPackageView,
@@ -48,6 +49,8 @@ export type {
   AuditGap,
   HandoffView,
   HandoffStep,
+  BundleReport,
+  RestoreResult,
   ReconciliationView,
   ReconciliationSummary,
   ReconcileItemView,
@@ -147,6 +150,13 @@ export const fetchAuditPackage = (year: number | 'current' = 'current') =>
 
 export const fetchHandoff = (year: number | 'current' = 'current') =>
   call<HandoffView>(`/api/handoff/${year}`)
+
+/** A dry run. Writes nothing, so a file can be examined before anything is decided. */
+export const inspectBundle = (bundle: unknown) =>
+  post<BundleReport>('/api/handoff/inspect', bundle)
+
+export const restoreBundle = (bundle: unknown) =>
+  post<RestoreResult>('/api/handoff/restore', bundle)
 
 /**
  * The whole book as one file, saved to disk.

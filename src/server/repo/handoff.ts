@@ -52,13 +52,28 @@ export interface HandoffView {
 }
 
 /**
- * Every table, in dependency order.
+ * Every table, in the order a restore must replay them.
  *
- * Ordered so a straight replay inserts parents before children. `audit_actor`
- * is deliberately absent: it holds who is writing right now, which is a
- * property of a live connection and means nothing in a file.
+ * Parents before children, and two orderings that are the database's rules
+ * rather than anyone's preference:
+ *
+ *   - `budgets` before `budget_years`, because an approved year refuses new
+ *     lines. The year row goes in last and closes the door behind it.
+ *   - `reconciliations` before `reconciliation_items`, with the statement
+ *     restored open and balanced afterwards, because a balanced reconciliation
+ *     refuses changes to what has cleared.
+ *
+ * The export writes its tables in this order too, so the file itself documents
+ * how to replay it and a reader working straight down the keys cannot trip
+ * over a trigger. This list is the single copy of that knowledge —
+ * `scripts/seed-sql.ts` and `repo/restore.ts` both read it rather than keeping
+ * their own, because two copies of an ordering constraint stay right until the
+ * day one of them does not.
+ *
+ * `audit_actor` is deliberately absent: it holds who is writing right now,
+ * which is a property of a live connection and means nothing in a file.
  */
-const TABLES = [
+export const RESTORE_ORDER = [
   'assemblies',
   'accounts',
   'funds',
@@ -74,12 +89,23 @@ const TABLES = [
   'rules',
   'vault',
   'donor_access_log',
-  'budget_years',
   'budgets',
+  'budget_years',
   'reconciliations',
   'reconciliation_items',
   'audit_log',
 ] as const
+
+/**
+ * Tables whose `id` is AUTOINCREMENT and must not be carried across.
+ *
+ * Restoring these rows with their original ids would collide with the entries
+ * the triggers write as the restore itself proceeds. The rows go in with every
+ * other column intact — original actor, original timestamp — and take new ids.
+ */
+export const RENUMBERED_ON_RESTORE = new Set(['audit_log', 'donor_access_log'])
+
+const TABLES = RESTORE_ORDER
 
 export interface HandoffBundle {
   readonly schemaVersion: number

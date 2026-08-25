@@ -13,6 +13,7 @@ import { setAuditActor } from './db/adapter'
 import { loadYear } from './repo/year'
 import { loadAuditPackage } from './repo/audit'
 import { exportEverything, loadHandoff } from './repo/handoff'
+import { planRestore, restore, RestoreError } from './repo/restore'
 import {
   ensureReport,
   finalizeReport,
@@ -158,7 +159,8 @@ export async function handleApi(
       error instanceof ReceiptError ||
       error instanceof RemittanceError ||
       error instanceof BudgetError ||
-      error instanceof ReconcileError
+      error instanceof ReconcileError ||
+      error instanceof RestoreError
     ) {
       return json({ error: error.message }, 409)
     }
@@ -319,6 +321,16 @@ async function route(
         'cache-control': 'no-store',
       },
     })
+  }
+
+  // Reading a bundle back in. Inspecting is a dry run and writes nothing, so
+  // a treasurer can be shown exactly what a file holds and what would stop it
+  // before anything is decided.
+  if (path === 'handoff/inspect' && method === 'POST') {
+    return json(await planRestore(db, await request.json()))
+  }
+  if (path === 'handoff/restore' && method === 'POST') {
+    return json(await restore(db, await request.json(), ctx.actor, ctx.now), 201)
   }
 
   // ── bank reconciliation ────────────────────────────────────────────────

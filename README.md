@@ -74,7 +74,9 @@ under Ledger → *Reconcile*, which is also what restores the dashboard's fourth
 asks for in one printable document, leading with five integrity checks and an honest list of
 what is not finished. The treasurer handoff at `/audit/handover` — a lossless export of every
 table, and the checklist of what has to pass between two people rather than two databases.
-Plus a printable receipt at `/receipts/:id` to hand someone.
+Reading one back in is on the same screen: choosing a file inspects it and writes nothing,
+and the restore is offered only once the file and the target both allow it. Plus a printable
+receipt at `/receipts/:id` to hand someone.
 
 All six nav destinations are built. There are no placeholders left.
 
@@ -125,17 +127,17 @@ Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **295 passing**;
+Everything below is current as of the last commit. `npm test` should show **319 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
 
 Every phase in the original plan is built, and it is deployed. Nothing is half-finished and
-no work is mid-flight — the tree is clean at `a5990e4`. Pick from the lists below.
+no work is mid-flight. Pick from the lists below.
 
-The single highest-value next thing is probably **the importer for the export file**: the
-handoff writes a complete versioned bundle that nothing can yet read back, which makes the
-"restore from backup" half of continuity a claim rather than a capability.
+The export/restore round trip now closes, so continuity is a capability rather than a claim.
+What is left is mostly hardening: narrowing the Access policy, the R2 binding for receipt
+images, and meeting a real bank's CSV.
 
 ### Before it holds a real Assembly's books
 
@@ -152,8 +154,6 @@ has met a real CSV from a real bank.
 - Automatic encrypted backup to an Assembly-owned Google Drive folder is not wired up: it
   needs OAuth credentials this project does not have. The handover page says so on its face
   rather than offering a button that would not work. The export there is the backup.
-- Importing an export back in is not built. The file is complete and versioned, so a reader
-  is a day's work, but nothing reads it yet.
 - The dev database is in-memory, so a restart resets it. `BEDROCK_DEV_DB=<path>` keeps it.
 
 ## Things worth knowing before you build on this
@@ -224,6 +224,7 @@ src/
                repo/reconcile.ts the statement, ticked off
                repo/audit.ts     the audit package, and what it cannot vouch for
                repo/handoff.ts   the export, and what has to pass between people
+               repo/restore.ts   reading a bundle back in, and refusing to
                vault/crypto.ts   PBKDF2 + AES-GCM, and its threat model
   data/        api.ts            browser fetch helpers
                YearContext.tsx   the year, fetched once and shared
@@ -418,6 +419,28 @@ database and refuses to print anything unless the two land on the same books. Tw
 in it are the database's rules rather than preferences: budget lines go in before their year
 (an approved year refuses new lines), and reconciliations go in open and are balanced at the
 end (a balanced one refuses changes to what has cleared).
+
+**A restore goes into an empty place.** It will not merge into live books and it will not
+overwrite them, and the refusal is about the target rather than the file — a perfectly sound
+bundle is still refused if the Assembly is already there. Merging or overwriting is the
+operation most likely to be reached for in a panic and most likely to destroy the thing it
+was meant to save.
+
+Everything is checked before anything is written: shape, format version, whole-cent money,
+and every reference between tables, so a truncated file fails before it is half loaded.
+That matters more than usual because D1 exposes no interactive transaction through
+`SqlDatabase`, so a failure part way through really would leave a partial database. The
+pre-flight makes that unlikely and the empty-target rule makes it recoverable.
+
+A newer bundle is refused outright rather than partially read. Loading only the parts this
+version understands would produce books that look whole and are not.
+
+**A restore keeps the original audit trail, and admits to itself.** The entries come back
+with their own actors and timestamps. The rows the triggers write as the restore proceeds
+are attributed to `restore by <who> from a bundle exported <when>`, so they can never be
+mistaken for ordinary activity, and one further entry records the whole act as a single
+findable event. `audit_log` and `donor_access_log` take new ids on the way in, because
+carrying the originals would collide with the entries the restore is generating.
 
 **The audit trail is enforced by triggers, not by convention.** An application-level rule only
 covers the code paths that remember it. The triggers in `0001_core.sql` fire for any write from

@@ -27,33 +27,17 @@
 
 import { migrate } from '../src/server/db/migrate'
 import { openNodeDatabase } from '../src/server/db/node-sqlite'
+import { RESTORE_ORDER } from '../src/server/repo/handoff'
 import { ASSEMBLY_ID, SEED_YEAR, seed } from '../src/server/seed'
 import { loadFunds } from '../src/server/repo/funds'
 
-/** Insertion order. Parents before children; audit_log is excluded above. */
-const TABLES = [
-  'assemblies',
-  'accounts',
-  'funds',
-  'categories',
-  'donors',
-  'import_batches',
-  'transactions',
-  'contributions',
-  'receipts',
-  'remittances',
-  'reports',
-  'attachments',
-  'rules',
-  'vault',
-  'donor_access_log',
-  // Before budget_years: an approved year refuses new lines.
-  'budgets',
-  'budget_years',
-  // Inserted open below, then balanced at the end.
-  'reconciliations',
-  'reconciliation_items',
-]
+/**
+ * Insertion order, read from the one place that defines it.
+ *
+ * `audit_log` is filtered out: the triggers write it as the rows arrive, so
+ * dumping it too would double every entry.
+ */
+const TABLES = RESTORE_ORDER.filter((t) => t !== 'audit_log')
 
 function literal(value: unknown): string {
   if (value === null || value === undefined) return 'NULL'
