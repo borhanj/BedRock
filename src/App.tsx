@@ -11,6 +11,7 @@ import ReceiptsPage from './pages/ReceiptsPage'
 import FundsPage, { FundsLayout, FundLedgerPage } from './pages/FundsPage'
 import RemittancePage from './pages/RemittancePage'
 import BudgetPage from './pages/BudgetPage'
+import ReconcilePage, { ReconcileDetailPage } from './pages/ReconcilePage'
 
 /**
  * The nav is the six destinations from the source design. Those not yet built
@@ -28,6 +29,8 @@ export default function App() {
           <Route index element={<LedgerPage />} />
           <Route path="cash" element={<CashJournalPage />} />
           <Route path="import" element={<ImportPage />} />
+          <Route path="reconcile" element={<ReconcilePage />} />
+          <Route path="reconcile/:id" element={<ReconcileDetailPage />} />
         </Route>
         <Route path="funds" element={<FundsLayout />}>
           <Route index element={<FundsPage />} />

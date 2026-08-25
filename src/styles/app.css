@@ -523,6 +523,25 @@ a {
   color: var(--bd-muted);
 }
 
+/* Correcting a figure read off the statement. Folded away by default: it is
+   the fix for a typo, not a step in the workflow. */
+.bd-amend {
+  margin-top: var(--bd-gap);
+  font: 400 12.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-amend > summary {
+  cursor: pointer;
+  color: var(--bd-primary-deep);
+}
+
+/* A check that has never run. Not amber, because nothing is wrong; not the
+   settled green either, because nothing has been confirmed right. */
+.bd-attention__row--unknown .bd-attention__count {
+  color: var(--bd-muted);
+}
+
 /* ── next feast ────────────────────────────────────────────────────────── */
 
 .bd-feast__name {

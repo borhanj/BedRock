@@ -31,6 +31,14 @@ export interface AttentionView {
   readonly label: string
   /** Shown in the settled tone when count is zero. */
   readonly resolvedLabel?: string
+  /** Where clicking the row takes the treasurer to deal with it. */
+  readonly href: string
+  /**
+   * 'unknown' — the check behind this row has never run, so its count is not
+   * a finding. A zero here would be a claim the database cannot support, and
+   * reads in neither the settled tone nor the amber one.
+   */
+  readonly tone?: 'unknown'
 }
 
 export interface AssemblyView {

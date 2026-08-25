@@ -25,6 +25,9 @@ export function LedgerLayout() {
         <NavLink to="/ledger/import" className={subnavClass}>
           Import a statement
         </NavLink>
+        <NavLink to="/ledger/reconcile" className={subnavClass}>
+          Reconcile
+        </NavLink>
       </nav>
       <Outlet />
     </div>

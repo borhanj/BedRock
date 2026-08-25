@@ -65,8 +65,13 @@ path for both.
 **Phase 5 — receipts and the donor vault.** Encrypted donor identity behind a PIN, gapless
 receipt numbering, void-not-delete, and a log of who has looked at donor detail.
 
-Phases 6–7 (funds and budget, the Audit Package) are not built. Their nav destinations name
-the phase that fills them in.
+**Phase 6 — funds, budget, reconciliation.** Per-fund sub-ledgers and the remittance record
+under Funds. Budget against actual by category, paced against the year, with next year's
+draft proposed from this year's actuals for the Assembly to approve. Bank reconciliation
+under Ledger → *Reconcile*, which is also what restores the dashboard's fourth worklist row.
+
+Phase 7 (the Audit Package and continuity) is not built. Its nav destination names the phase
+that fills it in.
 
 ### Running against real Cloudflare
 
@@ -84,20 +89,15 @@ that file — an Access policy and JWT verification — before the Worker is rea
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **156 passing**;
+Everything below is current as of the last commit. `npm test` should show **240 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
 
-**Phase 6 — funds, remittance, budget, reconciliation.** Per-fund sub-ledgers and a remittance
-screen (the schema and the data already exist; the Funds nav destination is still a
-placeholder). Budget entry per category per Bahá'í year, with next year's draft proposed from
-this year's actuals for the Assembly to approve. Bank reconciliation against a statement's
-ending balance — this is also what restores the dashboard's fourth worklist row, which was
-deliberately left out rather than report a confident zero for a check that has never run.
-
 **Phase 7 — audit and continuity.** The one-click Audit Package, encrypted backup to an
-Assembly-owned Google Drive folder, and the treasurer handoff export.
+Assembly-owned Google Drive folder, and the treasurer handoff export. The Audit Package now
+has everything it needs to draw on: the ledger, the category summaries, the receipt log, the
+fund sub-ledgers and a reconciliation history.
 
 ### Two things that block real use
 
@@ -181,13 +181,17 @@ src/
                repo/rules.ts     learned categorisation
                repo/donors.ts    the donor vault — the only reader of `donors`
                repo/receipts.ts  gapless numbering, void-not-delete
+               repo/funds.ts     sub-ledgers, the fund partition, remittance
+               repo/budget.ts    planned against actual, and next year's draft
+               repo/reconcile.ts the statement, ticked off
                vault/crypto.ts   PBKDF2 + AES-GCM, and its threat model
   data/        api.ts            browser fetch helpers
                YearContext.tsx   the year, fetched once and shared
   components/  AppShell, NineteenMonths, WhereMoneySits, NeedsAttention,
                NextFeast, Loading, ErrorPanel
   pages/       YearDashboard, FeastReportPage, LedgerPage,
-               ImportPage, CashJournalPage, Placeholder
+               ImportPage, CashJournalPage, ReceiptsPage, FundsPage,
+               RemittancePage, BudgetPage, ReconcilePage, Placeholder
   styles/      tokens.css        the palette — semantic names only
                app.css           layout; no hex literals
 worker.ts      Cloudflare Worker entry
@@ -265,6 +269,62 @@ the audit log. The PIN is held in browser memory only — never localStorage, ne
 **Receipt numbering is gapless.** A receipt is never deleted; a trigger refuses it. A mistake
 is voided with a stated reason, keeps its number, and the corrected receipt takes the next one.
 A gap in a receipt book reads to an auditor as a destroyed record.
+
+**The fund partition is one query, not two that agree.** The dashboard's "where the money
+sits" card and the Funds table both call `loadFundBalances`, and a test asserts they return
+the same figures — not because two implementations were checked against each other, but
+because there is only one. The rows are a partition: they sum to what is on hand, so money
+cannot belong to two funds or to none. The cash row nets out pass-through money sitting in
+the tin, since a National Fund note in the cash box is already counted by the National row,
+and the Local Fund being the residual would otherwise absorb the double-count as a shortfall
+that never happened.
+
+**Forwarding money upward writes two rows or neither.** A remittance is a withdrawal from the
+account *and* a discharge of the fund. Writing only the second would leave the money still in
+the bank balance while the fund showed it gone. It also refuses to forward more than a fund
+holds: an Assembly cannot send onward money it was never given, so a larger figure is a
+miscount on the way in, and posting it would bury the discrepancy in two places at once.
+
+**A budget is the Assembly's decision, not the treasurer's.** Drafting and approving are
+separate states, and an approved year refuses edits through a trigger rather than a code
+path — a raw SQL console is refused too, and a test proves it. Reopening is a further
+deliberate act. Next year's draft carries this year's actuals across unrounded and
+unadjusted; a proposal that quietly added ten percent would be software making a decision
+that belongs to nine people in a room. Because an Assembly drafts before the year is over,
+how much of the source year had actually happened is pinned at proposal time — read back a
+year later, when that year looks complete, nothing else would say the figures came from
+seventeen months.
+
+**Budget lines are paced, not just compared.** Eight months in, every expense line is under
+its whole-year figure, so colouring by that alone would paint the entire table as fine —
+including a line at 98% of its budget in the fifth month, which is the one line worth
+looking at. Amber means off pace, clay means the year's whole figure is already spent, ink
+means normal. Being under budget mid-year is not an achievement and does not read as one.
+
+**Pass-through contributions are kept out of the surplus.** A National Fund gift is income to
+the account with no matching expense line, so a plain income total would overstate what the
+Assembly can spend by exactly the amount it owes upward. Income categories name the fund they
+feed (`categories.fund_id`), and goals for other funds are shown separately.
+
+**Reconciliation has no adjusting entry, and never will.** A plug makes the books agree with
+the bank while burying the reason they did not, and that reason is the entire point of the
+exercise. `completeReconciliation` refuses anything but a difference of exactly zero and says
+by how much — the amount is usually the clue, since a figure matching one transaction is a
+missed tick and one divisible by nine is very often two digits transposed. What the treasurer
+gets instead is a way to correct a mistyped statement figure, which is the honest fix.
+
+**What has cleared the bank is stored beside a transaction, not on it.** Closing a Feast
+report locks its transactions, and `trg_transactions_locked` aborts any update to a locked
+row. But whether the bank has processed a cheque is a fact about the bank, not an edit to the
+books: a payment made in Kamál may well clear in ʿIzzat, long after that report is presented.
+`reconciliation_items` means reconciliation never touches a locked row, and the lock never
+has to be weakened to let it.
+
+**The worklist can say "I do not know".** The fourth row — unmatched bank items — was left
+out of Phase 2 because a confident zero for a check that had never run would have been worse
+than no row at all. It is here now and it still refuses to claim a zero: until a statement
+has been balanced it shows a dash and says the bank has never been reconciled, which is a
+different statement from "nothing to find".
 
 **The audit trail is enforced by triggers, not by convention.** An application-level rule only
 covers the code paths that remember it. The triggers in `0001_core.sql` fire for any write from

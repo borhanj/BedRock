@@ -186,6 +186,9 @@ describe('the year, read from the database', () => {
       uncategorised: 7,
       'missing-receipt-image': 3,
       'unissued-receipts': 2,
+      // Two cheques written at the end of Kamál that had not reached the bank
+      // by the statement date. Ordinary, and exactly what the row is for.
+      unreconciled: 2,
     })
   })
 })

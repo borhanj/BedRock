@@ -377,6 +377,65 @@ export async function seed(db: SqlDatabase): Promise<void> {
     )
   }
 
+  // ── the bank statement, reconciled ───────────────────────────────────────
+  //
+  // The treasurer has proved the account against the statement that ended with
+  // Kamál. Two cheques written in the last days of the month had not reached
+  // the bank by then, which is the ordinary case and the reason a difference
+  // is not the same thing as a mistake — they stay outstanding, and they are
+  // what the dashboard's fourth worklist row is counting.
+  //
+  // Most of what is ticked here belongs to months 1–7, whose reports are
+  // presented and whose transactions are locked. Clearing them works anyway,
+  // because what the bank has processed is recorded beside a transaction
+  // rather than on it.
+  const statementEnd = periods.find((p) => p.monthNumber === 8)!.endDate
+  const bankRows = await db.all<{
+    id: string
+    kind: string
+    category_id: string | null
+    amount_cents: number
+  }>(
+    `SELECT id, kind, category_id, amount_cents FROM transactions
+      WHERE account_id = ? AND occurred_on <= ?
+      ORDER BY occurred_on ASC, id ASC`,
+    [BANK, statementEnd],
+  )
+  // Bank fees are charged by the bank itself, so they are never in flight.
+  const inFlight = new Set(
+    bankRows
+      .filter((r) => r.kind === 'expense' && r.category_id !== 'cat-bank')
+      .slice(-2)
+      .map((r) => r.id),
+  )
+  const clearedRows = bankRows.filter((r) => !inFlight.has(r.id))
+  const statementBalance =
+    OPENING_BALANCE_CENTS + clearedRows.reduce((sum, r) => sum + r.amount_cents, 0)
+
+  // Open, then ticked, then balanced — the same order the app has to follow,
+  // because a balanced reconciliation refuses to have its ticks changed.
+  const reconciliationId = `rec-${BANK}-${statementEnd}`
+  await db.run(
+    `INSERT INTO reconciliations
+       (id, assembly_id, account_id, statement_ended_on, statement_balance_cents,
+        status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`,
+    [reconciliationId, ASSEMBLY_ID, BANK, statementEnd, statementBalance, NOW, NOW],
+  )
+  for (const row of clearedRows) {
+    await db.run(
+      `INSERT INTO reconciliation_items (reconciliation_id, transaction_id, cleared_on)
+       VALUES (?, ?, ?)`,
+      [reconciliationId, row.id, statementEnd],
+    )
+  }
+  await db.run(
+    `UPDATE reconciliations
+        SET status = 'balanced', completed_at = ?, completed_by = 'seed', updated_at = ?
+      WHERE id = ?`,
+    [NOW, NOW, reconciliationId],
+  )
+
   // ── the budget ───────────────────────────────────────────────────────────
   //
   // Lines first, then the header. An approved year refuses new lines — that is

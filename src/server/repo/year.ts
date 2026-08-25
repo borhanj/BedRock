@@ -9,6 +9,7 @@
 
 import { monthsForYear, nawRuz, toDayIndex } from '../../calendar/badi'
 import { loadFundBalances } from './funds'
+import { reconcileStanding } from './reconcile'
 import type {
   AttentionView,
   MonthActivityView,
@@ -173,10 +174,12 @@ export async function loadYear(
 /**
  * The worklist.
  *
- * Only counts the database can actually answer. The mockup also showed
- * "unmatched bank items", which needs the reconciliation tables from Phase 6 —
- * reporting a confident zero for a check that has never run would be worse
- * than leaving the row out, so it is left out until it means something.
+ * Only counts the database can actually answer. The fourth row — unmatched
+ * bank items — is the one the mockup showed and Phase 2 left out, because a
+ * confident zero for a check that had never run would have been worse than no
+ * row at all. It is here now, and it still refuses to claim a zero: until a
+ * statement has been balanced it reports that the check has not run, rather
+ * than that there is nothing to find.
  */
 async function loadAttention(
   db: SqlDatabase,
@@ -203,24 +206,44 @@ async function loadAttention(
     [assemblyId, assemblyId, assemblyId],
   )
 
+  const bank = await reconcileStanding(db, assemblyId)
+
   return [
     {
       key: 'uncategorised',
       count: row?.uncategorised ?? 0,
       label: 'transactions with no category',
       resolvedLabel: 'transactions with no category — all categorised',
+      href: '/ledger?uncategorised=1',
     },
     {
       key: 'missing-receipt-image',
       count: row?.missing_receipt_image ?? 0,
       label: 'expenses missing a receipt image',
       resolvedLabel: 'expenses missing a receipt image — all documented',
+      href: '/ledger',
     },
     {
       key: 'unissued-receipts',
       count: row?.unissued_receipts ?? 0,
       label: 'receipts not yet issued for cash gifts',
       resolvedLabel: 'cash gifts awaiting a receipt — all issued',
+      href: '/receipts',
     },
+    bank.lastBalancedOn === null
+      ? {
+          key: 'unreconciled',
+          count: 0,
+          tone: 'unknown' as const,
+          label: 'the bank has never been reconciled',
+          href: '/ledger/reconcile',
+        }
+      : {
+          key: 'unreconciled',
+          count: bank.unclearedCount,
+          label: `bank items not on a statement, as at ${bank.lastBalancedOn}`,
+          resolvedLabel: `every bank item is on a statement, to ${bank.lastBalancedOn}`,
+          href: '/ledger/reconcile',
+        },
   ]
 }

@@ -40,6 +40,16 @@ import {
   RemittanceError,
 } from './repo/funds'
 import {
+  completeReconciliation,
+  listReconciliations,
+  loadReconciliation,
+  ReconcileError,
+  reopenReconciliation,
+  setCleared,
+  setStatement,
+  startReconciliation,
+} from './repo/reconcile'
+import {
   approveBudget,
   BudgetError,
   loadBudget,
@@ -144,7 +154,8 @@ export async function handleApi(
       error instanceof ReportStateError ||
       error instanceof ReceiptError ||
       error instanceof RemittanceError ||
-      error instanceof BudgetError
+      error instanceof BudgetError ||
+      error instanceof ReconcileError
     ) {
       return json({ error: error.message }, 409)
     }
@@ -274,6 +285,75 @@ async function route(
       ),
       201,
     )
+  }
+
+  // ── bank reconciliation ────────────────────────────────────────────────
+  if (path === 'reconcile' && method === 'GET') {
+    return json(await listReconciliations(db, assemblyId))
+  }
+  if (path === 'reconcile' && method === 'POST') {
+    const body = (await request.json()) as {
+      accountId?: string
+      statementEndedOn?: string
+      statementBalanceCents?: number
+    }
+    return json(
+      await startReconciliation(
+        db, assemblyId,
+        {
+          accountId: required(body.accountId, 'accountId'),
+          statementEndedOn: required(body.statementEndedOn, 'statementEndedOn'),
+          statementBalanceCents: Number(
+            required(body.statementBalanceCents, 'statementBalanceCents'),
+          ),
+        },
+        ctx.actor, ctx.now,
+      ),
+      201,
+    )
+  }
+
+  const reconcile = /^reconcile\/([^/]+)$/.exec(path)
+  if (reconcile && method === 'GET') {
+    const view = await loadReconciliation(db, assemblyId, decodeURIComponent(reconcile[1]))
+    return view ? json(view) : json({ error: 'No such reconciliation' }, 404)
+  }
+
+  const reconcileItem = /^reconcile\/([^/]+)\/cleared$/.exec(path)
+  if (reconcileItem && (method === 'POST' || method === 'PATCH')) {
+    const body = (await request.json()) as { transactionId?: string; cleared?: boolean }
+    const view = await setCleared(
+      db, assemblyId, decodeURIComponent(reconcileItem[1]),
+      required(body.transactionId, 'transactionId'),
+      body.cleared !== false,
+      ctx.actor, ctx.now,
+    )
+    return view ? json(view) : json({ error: 'No such reconciliation' }, 404)
+  }
+
+  const reconcileStatement = /^reconcile\/([^/]+)\/statement$/.exec(path)
+  if (reconcileStatement && method === 'POST') {
+    const body = (await request.json()) as {
+      statementEndedOn?: string
+      statementBalanceCents?: number
+    }
+    const view = await setStatement(
+      db, assemblyId, decodeURIComponent(reconcileStatement[1]),
+      required(body.statementEndedOn, 'statementEndedOn'),
+      Number(required(body.statementBalanceCents, 'statementBalanceCents')),
+      ctx.actor, ctx.now,
+    )
+    return view ? json(view) : json({ error: 'No such reconciliation' }, 404)
+  }
+
+  const reconcileAction = /^reconcile\/([^/]+)\/(complete|reopen)$/.exec(path)
+  if (reconcileAction && method === 'POST') {
+    const run =
+      reconcileAction[2] === 'complete' ? completeReconciliation : reopenReconciliation
+    const view = await run(
+      db, assemblyId, decodeURIComponent(reconcileAction[1]), ctx.actor, ctx.now,
+    )
+    return view ? json(view) : json({ error: 'No such reconciliation' }, 404)
   }
 
   // ── the budget ─────────────────────────────────────────────────────────

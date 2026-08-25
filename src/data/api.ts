@@ -30,8 +30,16 @@ import type {
   RemittanceView,
 } from '../server/repo/funds'
 import type { BudgetLineView, BudgetView } from '../server/repo/budget'
+import type {
+  ReconcileItemView,
+  ReconciliationSummary,
+  ReconciliationView,
+} from '../server/repo/reconcile'
 
 export type {
+  ReconciliationView,
+  ReconciliationSummary,
+  ReconcileItemView,
   FundsView,
   FundLedgerView,
   RemittanceView,
@@ -121,6 +129,43 @@ export function fetchLedger(query: LedgerQuery = {}): Promise<LedgerRow[]> {
 
 export const fetchCashJournal = (year: number | 'current' = 'current') =>
   call<CashJournal>(`/api/cash/${year}`)
+
+// ── bank reconciliation ──────────────────────────────────────────────────────
+
+export const fetchReconciliations = () =>
+  call<ReconciliationSummary[]>('/api/reconcile')
+
+export const fetchReconciliation = (id: string) =>
+  call<ReconciliationView>(`/api/reconcile/${encodeURIComponent(id)}`)
+
+export const startReconciliation = (body: {
+  accountId: string
+  statementEndedOn: string
+  statementBalanceCents: number
+}) => post<ReconciliationView>('/api/reconcile', body)
+
+export const setCleared = (id: string, transactionId: string, cleared: boolean) =>
+  post<ReconciliationView>(`/api/reconcile/${encodeURIComponent(id)}/cleared`, {
+    transactionId,
+    cleared,
+  })
+
+export const setStatement = (
+  id: string,
+  statementEndedOn: string,
+  statementBalanceCents: number,
+) =>
+  post<ReconciliationView>(`/api/reconcile/${encodeURIComponent(id)}/statement`, {
+    statementEndedOn,
+    statementBalanceCents,
+  })
+
+/** Only ever succeeds at a difference of exactly zero. */
+export const completeReconciliation = (id: string) =>
+  post<ReconciliationView>(`/api/reconcile/${encodeURIComponent(id)}/complete`, {})
+
+export const reopenReconciliation = (id: string) =>
+  post<ReconciliationView>(`/api/reconcile/${encodeURIComponent(id)}/reopen`, {})
 
 /** "next" is resolved by the server, which owns the Naw-Rúz table. */
 export type BudgetYear = number | 'current' | 'next'
