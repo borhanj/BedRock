@@ -40,11 +40,14 @@ import type {
   AuditGap,
   AuditPackageView,
 } from '../server/repo/audit'
+import type { HandoffStep, HandoffView } from '../server/repo/handoff'
 
 export type {
   AuditPackageView,
   AuditCheck,
   AuditGap,
+  HandoffView,
+  HandoffStep,
   ReconciliationView,
   ReconciliationSummary,
   ReconcileItemView,
@@ -141,6 +144,43 @@ export const fetchCashJournal = (year: number | 'current' = 'current') =>
 /** Everything an auditor asks for, drawn against the database on request. */
 export const fetchAuditPackage = (year: number | 'current' = 'current') =>
   call<AuditPackageView>(`/api/audit/${year}`)
+
+export const fetchHandoff = (year: number | 'current' = 'current') =>
+  call<HandoffView>(`/api/handoff/${year}`)
+
+/**
+ * The whole book as one file, saved to disk.
+ *
+ * Fetched rather than linked so a failure surfaces as an error the treasurer
+ * can read, instead of a browser tab that quietly shows JSON.
+ */
+export async function downloadHandoffExport(): Promise<string> {
+  const response = await fetch('/api/handoff/export', {
+    headers: { accept: 'application/json' },
+  })
+  if (!response.ok) {
+    throw new ApiRequestError(
+      `The export could not be produced (${response.status}).`,
+      response.status,
+    )
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const name =
+    /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ??
+    'bedrock-export.json'
+
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  // Revoked on the next tick: doing it synchronously can beat the download.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+  return name
+}
 
 // ── bank reconciliation ──────────────────────────────────────────────────────
 
@@ -316,6 +356,15 @@ export interface ReceiptBook {
 }
 
 export const fetchReceipts = () => call<ReceiptBook>('/api/receipts')
+
+/** One receipt and the Assembly's name, enough to print a document. */
+export interface ReceiptDocument {
+  receipt: ReceiptView
+  assemblyName: string
+}
+
+export const fetchReceipt = (id: string) =>
+  call<ReceiptDocument>(`/api/receipts/${encodeURIComponent(id)}`)
 
 export const issueReceipt = (body: {
   contributionId: string

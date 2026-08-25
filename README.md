@@ -70,8 +70,13 @@ under Funds. Budget against actual by category, paced against the year, with nex
 draft proposed from this year's actuals for the Assembly to approve. Bank reconciliation
 under Ledger → *Reconcile*, which is also what restores the dashboard's fourth worklist row.
 
-Phase 7 (the Audit Package and continuity) is not built. Its nav destination names the phase
-that fills it in.
+**Phase 7 — audit and continuity.** The Audit Package at `/audit`: every figure an auditor
+asks for in one printable document, leading with five integrity checks and an honest list of
+what is not finished. The treasurer handoff at `/audit/handover` — a lossless export of every
+table, and the checklist of what has to pass between two people rather than two databases.
+Plus a printable receipt at `/receipts/:id` to hand someone.
+
+All six nav destinations are built. There are no placeholders left.
 
 ### Running against real Cloudflare
 
@@ -89,15 +94,13 @@ that file — an Access policy and JWT verification — before the Worker is rea
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **240 passing**;
+Everything below is current as of the last commit. `npm test` should show **279 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
 
-**Phase 7 — audit and continuity.** The one-click Audit Package, encrypted backup to an
-Assembly-owned Google Drive folder, and the treasurer handoff export. The Audit Package now
-has everything it needs to draw on: the ledger, the category summaries, the receipt log, the
-fund sub-ledgers and a reconciliation history.
+Every phase in the original plan is built. What is left is the two blockers below, and then
+the smaller things.
 
 ### Two things that block real use
 
@@ -112,10 +115,13 @@ Cloudflare* above for the four commands that change that.
 
 ### Smaller things left undone
 
-- A per-receipt printable document. The log prints with the page, but there is no single
-  receipt to hand someone. Naturally folds into Phase 7.
-- Receipt images cannot be uploaded. The dashboard counts expenses missing one and the ledger
-  flags them, but attaching needs an R2 binding.
+- Receipt images cannot be uploaded. The dashboard counts expenses missing one, the ledger
+  flags them and the audit package discloses them, but attaching needs an R2 binding.
+- Automatic encrypted backup to an Assembly-owned Google Drive folder is not wired up: it
+  needs OAuth credentials this project does not have. The handover page says so on its face
+  rather than offering a button that would not work. The export there is the backup.
+- Importing an export back in is not built. The file is complete and versioned, so a reader
+  is a day's work, but nothing reads it yet.
 - The dev database is in-memory, so a restart resets it. `BEDROCK_DEV_DB=<path>` keeps it.
 
 ## Things worth knowing before you build on this
@@ -184,6 +190,8 @@ src/
                repo/funds.ts     sub-ledgers, the fund partition, remittance
                repo/budget.ts    planned against actual, and next year's draft
                repo/reconcile.ts the statement, ticked off
+               repo/audit.ts     the audit package, and what it cannot vouch for
+               repo/handoff.ts   the export, and what has to pass between people
                vault/crypto.ts   PBKDF2 + AES-GCM, and its threat model
   data/        api.ts            browser fetch helpers
                YearContext.tsx   the year, fetched once and shared
@@ -191,7 +199,8 @@ src/
                NextFeast, Loading, ErrorPanel
   pages/       YearDashboard, FeastReportPage, LedgerPage,
                ImportPage, CashJournalPage, ReceiptsPage, FundsPage,
-               RemittancePage, BudgetPage, ReconcilePage, Placeholder
+               RemittancePage, BudgetPage, ReconcilePage, AuditPage,
+               HandoffPage, ReceiptPage
   styles/      tokens.css        the palette — semantic names only
                app.css           layout; no hex literals
 worker.ts      Cloudflare Worker entry
@@ -325,6 +334,32 @@ out of Phase 2 because a confident zero for a check that had never run would hav
 than no row at all. It is here now and it still refuses to claim a zero: until a statement
 has been balanced it shows a dash and says the bank has never been reconciled, which is a
 different statement from "nothing to find".
+
+**The Audit Package is composed, not re-queried.** It calls `loadYearSummary`, `loadFunds`,
+`loadBudget`, `listReconciliations` and `listReceipts` — the same functions the screens read,
+not equivalent ones written again for print. A pack that could disagree with the app would be
+worse than no pack, because the disagreement would surface in front of an auditor and neither
+figure could then be trusted. The tests assert identity, not equivalence.
+
+**The pack leads with what it cannot vouch for.** Five checks, computed against the database
+as the document is drawn rather than read from a flag: receipt numbering has no holes, every
+transaction is in the audit trail attributed, the fund balances partition what is on hand, no
+presented report has quietly moved, money is whole cents. Then the gaps, each with what it
+means to a reader. A tidy pack that buried eleven uncategorised rows on page four would not
+be a cleaner audit — only the same findings arriving later and from someone else.
+
+**The handover's first step is the one with no second chance.** The data is easy to copy; the
+donor PIN lives in one person's memory. If the outgoing treasurer leaves without passing it
+on, the names are unrecoverable — by the Assembly, by this software, at all. That is the
+encryption working correctly, and it is worth one plain sentence on the way out rather than a
+discovery next Naw-Rúz. It is the only step marked irreversible, and a test asserts it stays
+the only one.
+
+**The export is lossless and no more readable than the database was.** Every table, including
+the audit trail and the voided receipts, with a schema version. Donor names go in as the same
+ciphertext they are stored as: dropping them would make the file safe to lose and useless to
+keep, and decrypting them would make an export a way around the vault. `audit_actor` is
+excluded — it holds who is writing right now, which means nothing in a file.
 
 **The audit trail is enforced by triggers, not by convention.** An application-level rule only
 covers the code paths that remember it. The triggers in `0001_core.sql` fire for any write from

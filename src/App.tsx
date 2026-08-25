@@ -11,7 +11,9 @@ import FundsPage, { FundsLayout, FundLedgerPage } from './pages/FundsPage'
 import RemittancePage from './pages/RemittancePage'
 import BudgetPage from './pages/BudgetPage'
 import ReconcilePage, { ReconcileDetailPage } from './pages/ReconcilePage'
-import AuditPage from './pages/AuditPage'
+import AuditPage, { AuditLayout } from './pages/AuditPage'
+import HandoffPage from './pages/HandoffPage'
+import ReceiptPage from './pages/ReceiptPage'
 
 /**
  * The nav is the six destinations from the source design, all of them now
@@ -38,8 +40,12 @@ export default function App() {
           <Route path=":key" element={<FundLedgerPage />} />
         </Route>
         <Route path="receipts" element={<ReceiptsPage />} />
+        <Route path="receipts/:id" element={<ReceiptPage />} />
         <Route path="budget" element={<BudgetPage />} />
-        <Route path="audit" element={<AuditPage />} />
+        <Route path="audit" element={<AuditLayout />}>
+          <Route index element={<AuditPage />} />
+          <Route path="handover" element={<HandoffPage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

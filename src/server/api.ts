@@ -12,6 +12,7 @@ import type { SqlDatabase } from './db/adapter'
 import { setAuditActor } from './db/adapter'
 import { loadYear } from './repo/year'
 import { loadAuditPackage } from './repo/audit'
+import { exportEverything, loadHandoff } from './repo/handoff'
 import {
   ensureReport,
   finalizeReport,
@@ -73,6 +74,7 @@ import {
 import {
   issueReceipt,
   listReceipts,
+  readReceipt,
   ReceiptError,
   receiptSummary,
   unreceiptedGifts,
@@ -294,6 +296,29 @@ async function route(
     const resolved = audit[1] === 'current' ? bahaiYearFor(ctx.today) : Number(audit[1])
     const view = await loadAuditPackage(db, assemblyId, resolved, ctx.today, ctx.actor)
     return view ? json(view) : json({ error: 'No such assembly' }, 404)
+  }
+
+  // ── the treasurer handoff ──────────────────────────────────────────────
+  const handoff = /^handoff\/(\d+|current)$/.exec(path)
+  if (handoff && method === 'GET') {
+    const resolved =
+      handoff[1] === 'current' ? bahaiYearFor(ctx.today) : Number(handoff[1])
+    const view = await loadHandoff(db, assemblyId, resolved, ctx.today, ctx.actor)
+    return view ? json(view) : json({ error: 'No such assembly' }, 404)
+  }
+
+  // The whole book as one file. Served as a download rather than for display:
+  // it is the successor's copy, not something to read on screen.
+  if (path === 'handoff/export' && method === 'GET') {
+    const bundle = await exportEverything(db, assemblyId, ctx.now, ctx.actor)
+    return new Response(JSON.stringify(bundle, null, 2), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'content-disposition':
+          `attachment; filename="bedrock-${assemblyId}-${ctx.today}.json"`,
+        'cache-control': 'no-store',
+      },
+    })
   }
 
   // ── bank reconciliation ────────────────────────────────────────────────
@@ -521,6 +546,20 @@ async function route(
       awaiting: await unreceiptedGifts(db, assemblyId),
     })
   }
+  // One receipt, to print and hand to someone. No donor name: resolving the
+  // id is a separate, gated, logged act, and the browser does it only when the
+  // vault is open.
+  const oneReceipt = /^receipts\/([^/]+)$/.exec(path)
+  if (oneReceipt && method === 'GET') {
+    const receipt = await readReceipt(db, assemblyId, decodeURIComponent(oneReceipt[1]))
+    if (!receipt) return json({ error: 'No such receipt' }, 404)
+    const assembly = await db.get<{ name: string }>(
+      'SELECT name FROM assemblies WHERE id = ?',
+      [assemblyId],
+    )
+    return json({ receipt, assemblyName: assembly?.name ?? '' })
+  }
+
   if (path === 'receipts' && method === 'POST') {
     const body = (await request.json()) as {
       contributionId?: string

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useSearchParams } from 'react-router-dom'
 import { formatDateRange, formatLongDate } from '../calendar/badi'
 import { formatMoney, formatSigned } from '../lib/money'
 import {
@@ -11,6 +11,26 @@ import {
 import { useYearState } from '../data/YearContext'
 import Loading from '../components/Loading'
 import ErrorPanel from '../components/ErrorPanel'
+
+/** Shared chrome for the audit package and the handover. */
+export function AuditLayout() {
+  return (
+    <div className="bd-page">
+      <nav className="bd-subnav bd-noprint" aria-label="Audit sections">
+        <NavLink end to="/audit" className={subnavClass}>
+          The audit package
+        </NavLink>
+        <NavLink to="/audit/handover" className={subnavClass}>
+          Handing over
+        </NavLink>
+      </nav>
+      <Outlet />
+    </div>
+  )
+}
+
+const subnavClass = ({ isActive }: { isActive: boolean }) =>
+  isActive ? 'bd-subnav__link bd-subnav__link--active' : 'bd-subnav__link'
 
 /**
  * The Audit Package.
@@ -55,7 +75,7 @@ export default function AuditPage() {
   const outstanding = pack.gaps.filter((g) => g.count > 0)
 
   return (
-    <div className="bd-page">
+    <>
       <div className="bd-pagehead bd-noprint">
         <div>
           <p className="bd-eyebrow">Audit</p>
@@ -449,7 +469,7 @@ export default function AuditPage() {
         <Link to="/ledger/reconcile">reconciliation</Link> screens are the same figures,
         live.
       </p>
-    </div>
+    </>
   )
 }
 

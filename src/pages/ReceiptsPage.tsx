@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { formatMoney } from '../lib/money'
 import {
   fetchAccessLog,
@@ -118,7 +119,11 @@ export default function ReceiptsPage() {
             <tbody>
               {book.receipts.map((r) => (
                 <tr key={r.id} className={r.voidedAt ? 'bd-tr--muted' : undefined}>
-                  <td className="bd-table__num">{r.number}</td>
+                  <td className="bd-table__num">
+                    {/* The number is the link: a receipt is identified by it,
+                        and printing one is what a treasurer comes here to do. */}
+                    <Link to={`/receipts/${encodeURIComponent(r.id)}`}>{r.number}</Link>
+                  </td>
                   <td className="bd-table__date">{r.issuedOn}</td>
                   <td className="bd-table__num">{formatMoney(r.amountCents)}</td>
                   <td className="bd-table__meta">

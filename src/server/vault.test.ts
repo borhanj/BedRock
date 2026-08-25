@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { formatMoney } from '../lib/money'
+import { handleApi } from './api'
 import { migrate } from './db/migrate'
 import { openNodeDatabase, type NodeSqlDatabase } from './db/node-sqlite'
 import {
@@ -295,6 +296,36 @@ describe('receipts', () => {
     expect(summary.voided).toBe(0)
     expect(summary.nextNumber).toBe(2)
     expect(formatMoney(summary.totalCents)).toBe(formatMoney(gift.amountCents))
+  })
+
+  it('serves one receipt as a document, with no donor name in it', async () => {
+    // The printable receipt. It carries everything needed to hand someone an
+    // acknowledgement except the name, which stays behind the PIN like
+    // everywhere else — printing is not a way around the gate.
+    const issued = await issueReceipt(
+      db, ASSEMBLY_ID,
+      { contributionId: gift.contributionId, donorId: null, note: 'Cash at Feast', issuedOn: SEED_TODAY },
+      ACTOR,
+    )
+    const response = (await handleApi(
+      new Request(`http://localhost/api/receipts/${issued.id}`),
+      { db, assemblyId: ASSEMBLY_ID, actor: ACTOR, today: SEED_TODAY, now: NOW },
+    ))!
+    expect(response.status).toBe(200)
+
+    const body = await response.json()
+    expect(body.receipt.number).toBe(1)
+    expect(body.assemblyName).toContain('Riverbend')
+    expect(Object.keys(body.receipt)).not.toContain('donorName')
+    expect(JSON.stringify(body)).not.toContain('name_encrypted')
+  })
+
+  it('404s a receipt that does not exist', async () => {
+    const response = (await handleApi(
+      new Request('http://localhost/api/receipts/rcpt-nope'),
+      { db, assemblyId: ASSEMBLY_ID, actor: ACTOR, today: SEED_TODAY, now: NOW },
+    ))!
+    expect(response.status).toBe(404)
   })
 })
 

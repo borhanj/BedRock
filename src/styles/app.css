@@ -1089,6 +1089,188 @@ a {
   }
 }
 
+/* ── one printable receipt ─────────────────────────────────────────────────
+   White and quiet. This is the only document in Bedrock that leaves the
+   Assembly and goes to a member of the community, so it is the one place the
+   voice is addressed outward rather than to the treasurer. */
+
+.bd-receipt {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--bd-gap-lg);
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border-strong);
+}
+
+.bd-receipt__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--bd-gap);
+  padding-bottom: var(--bd-gap);
+  border-bottom: 2px solid var(--bd-ink);
+}
+
+.bd-receipt__eyebrow {
+  font: 600 9.5px var(--bd-font-sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+}
+
+.bd-receipt__assembly {
+  margin-top: 4px;
+  font: 400 21px var(--bd-font-serif);
+}
+
+.bd-receipt__number {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bd-receipt__numberlabel {
+  font: 400 10.5px var(--bd-font-sans);
+  color: var(--bd-muted);
+  margin-right: 4px;
+}
+
+.bd-receipt__numbervalue {
+  font: 400 27px var(--bd-font-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--bd-primary-deep);
+}
+
+/* A void still prints, and says so on its face. Faded out would be a document
+   that could be mistaken for a live one at a glance. */
+.bd-receipt--void .bd-receipt__numbervalue {
+  color: var(--bd-expense-text);
+  text-decoration: line-through;
+}
+
+.bd-receipt__voidmark {
+  margin-top: var(--bd-gap);
+  padding: 10px 12px;
+  font: 400 12.5px/1.5 var(--bd-font-sans);
+  color: var(--bd-expense-text);
+  background: var(--bd-expense-soft);
+  border-left: 3px solid var(--bd-expense);
+}
+
+.bd-receipt__rows {
+  margin-top: var(--bd-gap);
+}
+
+.bd-receipt__row {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bd-border);
+}
+
+.bd-receipt__row dt {
+  font: 400 11px var(--bd-font-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bd-muted);
+  padding-top: 3px;
+}
+
+.bd-receipt__row dd {
+  font: 400 15px var(--bd-font-serif);
+}
+
+.bd-receipt__amount {
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-receipt__muted {
+  color: var(--bd-muted);
+  font-family: var(--bd-font-sans);
+  font-size: 13px;
+}
+
+/* Left to write on when the vault is locked. A ruled line, because that is
+   what it is for. */
+.bd-receipt__blank {
+  display: block;
+  min-height: 20px;
+  border-bottom: 1px solid var(--bd-border-strong);
+  max-width: 320px;
+}
+
+.bd-receipt__foot {
+  margin-top: var(--bd-gap-lg);
+  font: 400 12.5px/1.6 var(--bd-font-sans);
+  color: var(--bd-muted);
+}
+
+.bd-receipt__sign {
+  margin-top: var(--bd-gap-lg);
+  font-size: 11.5px;
+}
+
+.bd-receipt__signline {
+  display: block;
+  width: 240px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid var(--bd-border-strong);
+}
+
+/* ── the handover checklist ────────────────────────────────────────────── */
+
+.bd-steps {
+  margin-top: var(--bd-gap);
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+
+.bd-step {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+}
+
+/* The one step with no second chance. Marked on the leading edge rather than
+   tinted throughout: it is the most important item on the page, not an error
+   state, and a red panel would read as something having gone wrong. */
+.bd-step--irreversible {
+  box-shadow: inset 3px 0 0 var(--bd-attention);
+}
+
+.bd-step__number {
+  font: 400 17px var(--bd-font-serif);
+  color: var(--bd-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-step__title {
+  font: 400 14px var(--bd-font-sans);
+  color: var(--bd-text);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bd-step__detail {
+  margin-top: 5px;
+  font: 400 12.5px/1.5 var(--bd-font-sans);
+  color: var(--bd-muted);
+  max-width: 74ch;
+}
+
+.bd-step__status {
+  margin-top: 6px;
+  font: 400 12px var(--bd-font-sans);
+  color: var(--bd-primary-deep);
+}
+
 /* ── ledger, import and cash journal (Phase 3) ─────────────────────────── */
 
 .bd-subnav {
