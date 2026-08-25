@@ -82,9 +82,9 @@ All six nav destinations are built. There are no placeholders left.
 
 ### It is deployed
 
-<https://bedrock.<your-subdomain>.workers.dev> — behind Cloudflare Access, seeded with the
-worked year of 183 B.E. Signing in is required for the API; the static shell is public and
-useless without it.
+It runs on Cloudflare Workers behind Cloudflare Access, on D1, seeded with the worked year
+of 183 B.E. Signing in is required for the API; the static shell is served to anyone and is
+useless without it. The URL is not in the repository — ask whoever deployed it.
 
 It is a personal test deployment and holds no real Assembly's books — only the fictional
 Riverbend fixture. Wipe it, reseed it or redeploy over it freely. The Access tenant carries
@@ -94,6 +94,13 @@ work.
 The dev server uses an in-memory database, so nothing persists between restarts. Set
 `BEDROCK_DEV_DB` to a file path to keep data across restarts, which is worth doing while
 working on the import flow.
+
+The live configuration is not committed. Copy the example and fill in the three values it
+marks:
+
+```bash
+cp wrangler.example.jsonc wrangler.jsonc
+```
 
 To deploy again after a change:
 
@@ -107,7 +114,7 @@ To stand a fresh environment up from nothing:
 npx wrangler d1 create bedrock
 ```
 
-Put the returned id in `wrangler.jsonc`, then apply the schema and load the worked year. The
+Put the returned id in your `wrangler.jsonc`, then apply the schema and load the worked year. The
 seed is rendered to SQL from `src/server/seed.ts` rather than written twice, and the script
 replays its own output into a second database and checks it lands on the same books before
 printing anything:
@@ -122,7 +129,8 @@ npx vite-node scripts/seed-sql.ts > seed.sql && npx wrangler d1 execute bedrock 
 
 Finally, protect the Worker: its **Access** tab in the dashboard, scope *All traffic*, with a
 policy naming the treasurer(s). Copy the AUD tag and team domain from the *Application
-values* panel into `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in `wrangler.jsonc` and redeploy.
+values* panel into `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` in your `wrangler.jsonc` and
+redeploy.
 Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up

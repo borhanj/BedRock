@@ -1,0 +1,62 @@
+{
+  // Copy this to wrangler.jsonc and fill in the three values marked below.
+  //
+  //   cp wrangler.example.jsonc wrangler.jsonc
+  //
+  // wrangler.jsonc itself is git-ignored. None of what goes in it is a
+  // credential — the AUD tag and team domain are visible to anyone who hits
+  // the site, since Access puts both in the login redirect, and a D1 database
+  // id grants nothing without account credentials. It is kept out of the repo
+  // because this one is public and an account's infrastructure identifiers are
+  // nobody else's business, not because leaking them would let someone in.
+  //
+  // What WOULD be a credential never goes in either file: secrets belong in
+  // `wrangler secret put`, and the donor PIN is never stored anywhere at all.
+
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bedrock",
+  "main": "worker.ts",
+  "compatibility_date": "2026-08-01",
+
+  // The built SPA. The Worker handles /api/* and hands everything else here.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bedrock",
+      // From `npx wrangler d1 create bedrock`.
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      // Same files the dev server and the tests run, applied with
+      // `wrangler d1 migrations apply bedrock --remote`. It belongs inside the
+      // binding, not at the top level — wrangler ignores it there with only a
+      // warning, and then migrates nothing.
+      "migrations_dir": "src/server/db/migrations"
+    }
+  ],
+
+  "vars": {
+    "ASSEMBLY_ID": "riverbend",
+
+    // Cloudflare Access, which worker.ts verifies against on every API
+    // request. Both are read from the Worker's Access tab in the dashboard,
+    // under "Application values", once the Worker is protected.
+    //
+    // Change the Access application and these must change with it: worker.ts
+    // refuses to serve the API at all if they are unset, and refuses every
+    // request if they are wrong. That is deliberate. A misconfiguration here
+    // should stop the books being served, not quietly stop them being
+    // protected.
+    "ACCESS_TEAM_DOMAIN": "REPLACE_WITH_ACCESS_TEAM_DOMAIN",
+    "ACCESS_AUD": "REPLACE_WITH_ACCESS_AUD_TAG"
+  }
+
+  // Still to do before this holds a real Assembly's books:
+  //  - Narrow the Access policy. It currently admits any member of the
+  //    Cloudflare account; it should name the treasurer(s).
+  //  - An R2 bucket binding for receipt images and bank statements.
+}
