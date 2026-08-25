@@ -8,7 +8,7 @@
  */
 
 import type { Cents } from '../../lib/money'
-import type { SqlDatabase } from '../db/adapter'
+import type { SqlDatabase, SqlStatement } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
 import { readTable, type CsvTable } from '../import/csv'
 import {
@@ -18,7 +18,7 @@ import {
   type DateDetection,
   type RowProblem,
 } from '../import/mapping'
-import { findNearMatch, hashRows, type NearMatch } from '../import/dedupe'
+import { findNearMatches, hashRows, type NearMatch } from '../import/dedupe'
 import { suggestForAll, learn, type Suggestion } from './rules'
 
 export type RowVerdict =
@@ -77,6 +77,25 @@ export async function previewImport(
   csvText: string,
   override?: ColumnMapping,
 ): Promise<ImportPreview> {
+  return buildPreview(db, assemblyId, accountId, csvText, override, true)
+}
+
+async function buildPreview(
+  db: SqlDatabase,
+  assemblyId: string,
+  accountId: string,
+  csvText: string,
+  override: ColumnMapping | undefined,
+  /**
+   * False on the commit path, where the answer cannot change anything. A
+   * near match only ever produces the `possible-duplicate` verdict, and commit
+   * writes a possible duplicate the treasurer accepted exactly as it writes a
+   * new row — it is the exact-hash `duplicate` verdict that stops a write.
+   * Looking again would be a second pass over the statement to reach a
+   * conclusion nothing reads.
+   */
+  withNearMatches: boolean,
+): Promise<ImportPreview> {
   const { table, mapping: guessed, dateDetection } = inspect(csvText)
   const mapping = override ?? guessed
 
@@ -112,20 +131,25 @@ export async function previewImport(
     hashed.map((r) => r.description),
   )
 
-  const rows: PreviewRow[] = []
-  for (const [i, row] of hashed.entries()) {
-    let verdict: RowVerdict = 'new'
-    let nearMatch: NearMatch | null = null
+  // Only rows that would otherwise be imported are worth comparing: one the
+  // hash already recognises is settled.
+  const unseen = hashed.filter((row) => !existing.has(row.dedupeHash))
+  const nearMatches = withNearMatches
+    ? await findNearMatches(db, accountId, unseen)
+    : unseen.map(() => null)
+  const nearByHash = new Map<string, NearMatch | null>(
+    unseen.map((row, i) => [row.dedupeHash, nearMatches[i]]),
+  )
 
-    if (existing.has(row.dedupeHash)) {
-      verdict = 'duplicate'
-    } else {
-      // Only worth the query for rows we would otherwise import.
-      nearMatch = await findNearMatch(db, accountId, row)
-      if (nearMatch) verdict = 'possible-duplicate'
-    }
+  const rows: PreviewRow[] = hashed.map((row, i) => {
+    const nearMatch = nearByHash.get(row.dedupeHash) ?? null
+    const verdict: RowVerdict = existing.has(row.dedupeHash)
+      ? 'duplicate'
+      : nearMatch
+        ? 'possible-duplicate'
+        : 'new'
 
-    rows.push({
+    return {
       line: row.line,
       occurredOn: row.occurredOn,
       description: row.description,
@@ -135,8 +159,8 @@ export async function previewImport(
       verdict,
       nearMatch,
       suggestion: suggestions[i],
-    })
-  }
+    }
+  })
 
   return {
     header: table.header,
@@ -184,12 +208,13 @@ export async function commitImport(
 ): Promise<CommitResult> {
   await setAuditActor(db, request.actor)
 
-  const preview = await previewImport(
+  const preview = await buildPreview(
     db,
     assemblyId,
     request.accountId,
     request.csvText,
     request.mapping,
+    false,
   )
 
   const accept = new Set(request.accept)
@@ -198,45 +223,49 @@ export async function commitImport(
   // record of "everything in here was already on file".
   const batchId = `imp-${crypto.randomUUID()}`
 
-  // The batch row goes in first: every transaction references it, and the
-  // foreign key is checked at insert time. imported_count is corrected below
-  // once we know how many rows the treasurer actually accepted.
-  await db.run(
-    `INSERT INTO import_batches
-       (id, assembly_id, account_id, filename, r2_key, mapping_json,
-        row_count, imported_count, duplicate_count, created_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, 0, ?, ?)`,
-    [
-      batchId,
-      assemblyId,
-      request.accountId,
-      request.filename,
-      JSON.stringify(request.mapping),
-      preview.counts.total,
-      preview.counts.duplicates,
-      request.now,
-    ],
+  // A duplicate is never imported even if the client asks: the unique index
+  // would reject it anyway, and failing the whole batch over it helps nobody.
+  const importing = preview.rows.filter(
+    (row) => row.verdict !== 'duplicate' && accept.has(row.dedupeHash),
   )
 
-  let imported = 0
-  for (const row of preview.rows) {
-    // A duplicate is never imported even if the client asks: the unique index
-    // would reject it anyway, and failing the whole batch over it helps nobody.
-    if (row.verdict === 'duplicate') continue
-    if (!accept.has(row.dedupeHash)) continue
+  // The batch row goes first: every transaction references it, and the foreign
+  // key is checked at insert time. It can carry its final imported_count
+  // straight away — what the treasurer accepted is known before anything is
+  // written, so there is nothing to correct afterwards.
+  const statements: SqlStatement[] = [
+    {
+      sql: `INSERT INTO import_batches
+              (id, assembly_id, account_id, filename, r2_key, mapping_json,
+               row_count, imported_count, duplicate_count, created_at)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+      params: [
+        batchId,
+        assemblyId,
+        request.accountId,
+        request.filename,
+        JSON.stringify(request.mapping),
+        preview.counts.total,
+        importing.length,
+        preview.counts.duplicates,
+        request.now,
+      ],
+    },
+  ]
 
+  for (const row of importing) {
     // Money in is a contribution unless the treasurer says otherwise; money
     // out is an expense. Both are provisional and shown as uncategorised
     // until confirmed, which is what the dashboard's worklist counts.
     const kind = row.amountCents > 0 ? 'contribution' : 'expense'
 
-    await db.run(
-      `INSERT INTO transactions
-         (id, assembly_id, account_id, fund_id, category_id, occurred_on, amount_cents,
-          payee, memo, method, source, kind, dedupe_hash, import_batch_id,
-          is_locked, created_at, updated_at)
-       VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, 'bank', 'import', ?, ?, ?, 0, ?, ?)`,
-      [
+    statements.push({
+      sql: `INSERT INTO transactions
+              (id, assembly_id, account_id, fund_id, category_id, occurred_on, amount_cents,
+               payee, memo, method, source, kind, dedupe_hash, import_batch_id,
+               is_locked, created_at, updated_at)
+            VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, 'bank', 'import', ?, ?, ?, 0, ?, ?)`,
+      params: [
         `txn-${row.dedupeHash.slice(0, 24)}`,
         assemblyId,
         request.accountId,
@@ -250,19 +279,18 @@ export async function commitImport(
         request.now,
         request.now,
       ],
-    )
-    imported++
+    })
   }
 
-  await db.run('UPDATE import_batches SET imported_count = ? WHERE id = ?', [
-    imported,
-    batchId,
-  ])
+  // One call rather than a write per line. A statement with a thousand rows on
+  // it is an ordinary thing for an Assembly to be handed, and a thousand
+  // separate writes is what a Worker is not allowed to make.
+  await db.batch(statements)
 
   return {
     batchId,
-    imported,
-    skipped: preview.rows.length - imported,
+    imported: importing.length,
+    skipped: preview.rows.length - importing.length,
   }
 }
 

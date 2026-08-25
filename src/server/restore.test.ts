@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { BATCH_SIZE, setAuditActor, type SqlDatabase, type SqlStatement } from './db/adapter'
 import { migrate } from './db/migrate'
 import { openNodeDatabase, type NodeSqlDatabase } from './db/node-sqlite'
 import { exportEverything, HANDOFF_SCHEMA_VERSION } from './repo/handoff'
@@ -345,5 +346,73 @@ describe('the restore API', () => {
       'SELECT COUNT(*) AS n FROM assemblies',
     )
     expect(untouched!.n).toBe(0)
+  })
+})
+
+/** A database that counts requests, not statements. See import.test.ts. */
+function counting(inner: SqlDatabase) {
+  let trips = 0
+  const db: SqlDatabase = {
+    all: (sql, params) => (trips += 1, inner.all(sql, params)),
+    get: (sql, params) => (trips += 1, inner.get(sql, params)),
+    run: (sql, params) => (trips += 1, inner.run(sql, params)),
+    batch: (statements: readonly SqlStatement[]) => (
+      (trips += Math.ceil(statements.length / BATCH_SIZE)), inner.batch(statements)
+    ),
+    exec: (sql) => inner.exec(sql),
+  }
+  return { db, trips: () => trips }
+}
+
+describe('restoring a book big enough to be real', () => {
+  let source: NodeSqlDatabase
+  let target: NodeSqlDatabase
+
+  beforeEach(async () => {
+    source = await seeded()
+    target = await empty()
+
+    // The worked year is 85 transactions. An Assembly's actual year is
+    // several hundred, and the audit trail carries a row for every one of
+    // them, so the bundle is thousands of rows long.
+    await setAuditActor(source, 'outgoing@riverbend')
+    await source.batch(
+      Array.from({ length: 600 }, (_, i) => ({
+        sql: `INSERT INTO transactions
+                (id, assembly_id, account_id, occurred_on, amount_cents, payee, method,
+                 source, kind, is_locked, created_at, updated_at)
+              VALUES (?, ?, 'acct-bank', '2026-08-02', ?, ?, 'bank', 'import', 'expense', 0,
+                      '2026-08-02T00:00:00Z', '2026-08-02T00:00:00Z')`,
+        params: [`txn-bulk-${i}`, ASSEMBLY_ID, -(i + 1), `PAYEE ${i}`],
+      })),
+    )
+  })
+
+  // A restore that writes a row at a time is a network round trip per row
+  // against D1, and a Worker is allowed a bounded number of those. Past that
+  // ceiling the restore did not slow down, it stopped — part way through, on
+  // the one operation where being handed half the books is worst.
+  it('is a few dozen requests rather than one per row', async () => {
+    const bundle = await overWire(source)
+    const counted = counting(target)
+
+    const result = await restore(counted.db, bundle, ACTOR, NOW)
+
+    expect(result.rowsWritten).toBeGreaterThan(1000)
+    expect(counted.trips()).toBeLessThan(result.rowsWritten / 20)
+  })
+
+  it('lands on the same books at that size', async () => {
+    await restore(target, await overWire(source), ACTOR, NOW)
+
+    const before = await loadFunds(source, ASSEMBLY_ID, SEED_YEAR)
+    const after = await loadFunds(target, ASSEMBLY_ID, SEED_YEAR)
+    expect(after.funds).toEqual(before.funds)
+    expect(after.onHandCents).toBe(before.onHandCents)
+
+    const rows = await target.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM transactions WHERE id LIKE 'txn-bulk-%'",
+    )
+    expect(rows?.n).toBe(600)
   })
 })

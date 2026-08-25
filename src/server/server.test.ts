@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { formatMoney, sumCents } from '../lib/money'
-import { setAuditActor, type SqlDatabase } from './db/adapter'
+import { BATCH_SIZE, setAuditActor, type SqlDatabase } from './db/adapter'
 import { loadMigrations, migrate } from './db/migrate'
 import { openNodeDatabase, type NodeSqlDatabase } from './db/node-sqlite'
 import { loadYear } from './repo/year'
@@ -300,5 +300,76 @@ describe('splitAmount', () => {
         expect(sumCents(parts_)).toBe(total)
       }
     }
+  })
+})
+
+describe('writing many rows at once', () => {
+  const insert = (id: string, cents: number) => ({
+    sql: `INSERT INTO transactions
+            (id, assembly_id, account_id, occurred_on, amount_cents, payee, method,
+             source, kind, is_locked, created_at, updated_at)
+          VALUES (?, ?, 'acct-bank', '2026-08-02', ?, ?, 'bank', 'manual', 'expense', 0,
+                  '2026-08-02T00:00:00Z', '2026-08-02T00:00:00Z')`,
+    params: [id, ASSEMBLY_ID, cents, id],
+  })
+
+  it('applies the statements in the order they are given', async () => {
+    const db = await freshDatabase()
+    await setAuditActor(db, 'treasurer@riverbend')
+
+    await db.batch([
+      insert('txn-batch-1', -100),
+      insert('txn-batch-2', -200),
+      { sql: 'UPDATE transactions SET memo = ? WHERE id = ?', params: ['seen', 'txn-batch-1'] },
+    ])
+
+    const rows = await db.all<{ id: string; memo: string | null }>(
+      "SELECT id, memo FROM transactions WHERE id LIKE 'txn-batch-%' ORDER BY id",
+    )
+    expect(rows.map((r) => r.id)).toEqual(['txn-batch-1', 'txn-batch-2'])
+    // The update ran after the insert it refers to, not before it.
+    expect(rows[0].memo).toBe('seen')
+    db.close()
+  })
+
+  // The reason a batch is worth having over a loop of writes: half of it
+  // cannot land. A restore that fails is wiped and retried, and that only
+  // works if what failed left nothing behind.
+  it('leaves nothing behind when one statement fails', async () => {
+    const db = await freshDatabase()
+    await setAuditActor(db, 'treasurer@riverbend')
+
+    await expect(
+      db.batch([
+        insert('txn-doomed-1', -100),
+        { sql: 'INSERT INTO transactions (id) VALUES (?)', params: ['txn-doomed-2'] },
+      ]),
+    ).rejects.toThrow()
+
+    const survivors = await db.all("SELECT id FROM transactions WHERE id LIKE 'txn-doomed-%'")
+    expect(survivors).toHaveLength(0)
+    db.close()
+  })
+
+  it('carries more statements than fit in one chunk', async () => {
+    const db = await freshDatabase()
+    await setAuditActor(db, 'treasurer@riverbend')
+
+    const many = BATCH_SIZE * 2 + 7
+    await db.batch(
+      Array.from({ length: many }, (_, i) => insert(`txn-many-${i}`, -(i + 1))),
+    )
+
+    const row = await db.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM transactions WHERE id LIKE 'txn-many-%'",
+    )
+    expect(row?.n).toBe(many)
+    db.close()
+  })
+
+  it('does nothing, and asks the database nothing, when given no statements', async () => {
+    const db = await freshDatabase()
+    await expect(db.batch([])).resolves.toBeUndefined()
+    db.close()
   })
 })

@@ -14,6 +14,11 @@
 
 export type SqlValue = string | number | null
 
+export interface SqlStatement {
+  readonly sql: string
+  readonly params?: SqlValue[]
+}
+
 export interface SqlDatabase {
   /** Every matching row. */
   all<T = Record<string, SqlValue>>(sql: string, params?: SqlValue[]): Promise<T[]>
@@ -21,8 +26,49 @@ export interface SqlDatabase {
   get<T = Record<string, SqlValue>>(sql: string, params?: SqlValue[]): Promise<T | null>
   /** A write. Returns rows affected where the driver reports it. */
   run(sql: string, params?: SqlValue[]): Promise<{ changes: number }>
+  /**
+   * Many writes, in order, as one unit — all of them or none.
+   *
+   * This exists because of what a `run` costs in production. Against
+   * node:sqlite a write is a function call; against D1 it is a network round
+   * trip, and a Worker is allowed a bounded number of those per request. A
+   * loop of `run` over the rows of a bank statement is therefore not merely
+   * slow at volume, it stops working: a large enough import or restore
+   * exhausts the subrequest budget and fails part-written.
+   *
+   * The obvious alternative — one INSERT with a thousand placeholders — is not
+   * available. D1 caps a single statement at 100 bound parameters, so a
+   * multi-row VALUES list breaks somewhere around the twentieth row.
+   *
+   * Callers pass every statement they mean to write and let the implementation
+   * decide how to get them there. Both send them in chunks, and both wrap a
+   * chunk in a transaction, so a failure rolls its chunk back rather than
+   * leaving half a row's worth of one behind.
+   */
+  batch(statements: readonly SqlStatement[]): Promise<void>
   /** Statements applied in order. Used by the migration runner and seeds. */
   exec(sql: string): Promise<void>
+}
+
+/**
+ * How many statements go to the database at once.
+ *
+ * Bounded because a batch is one request: D1 has a request size limit, and a
+ * ten-thousand-row restore sent as a single array would meet it. A hundred
+ * turns a thousand round trips into ten, which is the whole of the win —
+ * pushing it higher buys almost nothing and risks the ceiling.
+ */
+export const BATCH_SIZE = 100
+
+/** The statements of a batch, in chunks of at most BATCH_SIZE. */
+export function chunkStatements(
+  statements: readonly SqlStatement[],
+): Array<readonly SqlStatement[]> {
+  const chunks: Array<readonly SqlStatement[]> = []
+  for (let i = 0; i < statements.length; i += BATCH_SIZE) {
+    chunks.push(statements.slice(i, i + BATCH_SIZE))
+  }
+  return chunks
 }
 
 /**

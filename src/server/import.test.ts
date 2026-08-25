@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { formatMoney } from '../lib/money'
+import { BATCH_SIZE, type SqlDatabase, type SqlStatement } from './db/adapter'
 import { migrate } from './db/migrate'
 import { openNodeDatabase, type NodeSqlDatabase } from './db/node-sqlite'
 import { detectDelimiter, parseCsv, readTable } from './import/csv'
@@ -10,7 +11,7 @@ import {
   parseDate,
   type ColumnMapping,
 } from './import/mapping'
-import { normalizeDescription } from './import/dedupe'
+import { dedupeHash, normalizeDescription } from './import/dedupe'
 import { commitImport, categorise, previewImport } from './repo/import'
 import { createTransaction, loadCashJournal, loadLedger } from './repo/ledger'
 import { listRules } from './repo/rules'
@@ -176,6 +177,41 @@ describe('mapping columns', () => {
       expect.stringContaining('amount'),
       'Amount is zero',
     ])
+  })
+})
+
+describe('the de-duplication key', () => {
+  // Frozen on purpose, and not computed from the same code it is checking.
+  //
+  // Every row any Assembly has ever imported is on file under a hash this
+  // function produced. Change how the key is built — a separator, an ordinal,
+  // the order of the parts — and none of those hashes match any more: the next
+  // statement re-imports in full, silently, and the books double. That is a
+  // change someone may still decide to make, with a migration behind it. It is
+  // not a change anyone should be able to make by accident.
+  it('hashes a row exactly as it did before', async () => {
+    expect(
+      await dedupeHash({
+        accountId: 'acct-bank',
+        occurredOn: '2026-08-02',
+        amountCents: -45_000,
+        description: 'HALL RENTAL, RIVERBEND',
+        ordinal: 0,
+      }),
+    ).toBe('721dcee4ef8cdd7bdda295d8e25cd601588a434981f52d2e4cbb96cb6ff858fb')
+  })
+
+  // The separator is NUL because it has to be something a bank cannot write
+  // into a description. Joining on anything a description may contain lets two
+  // different rows collide, and a collision here means a genuine transaction
+  // is treated as one already on file and never imported.
+  it('does not confuse two rows whose fields divide differently', async () => {
+    const rest = { amountCents: -45_000, description: 'HALL RENTAL', ordinal: 0 }
+    // The same characters in the same order, divided in two places. Joined on
+    // a space these are one string and one hash; joined on NUL they are two.
+    const a = await dedupeHash({ accountId: 'acct 1', occurredOn: '2026-08-02', ...rest })
+    const b = await dedupeHash({ accountId: 'acct', occurredOn: '1 2026-08-02', ...rest })
+    expect(a).not.toBe(b)
   })
 })
 
@@ -446,5 +482,121 @@ describe('the cash journal', () => {
       "SELECT COUNT(*) AS n FROM contributions WHERE amount_cents = 5000",
     )
     expect(contribution!.n).toBe(1)
+  })
+})
+
+/**
+ * A database that counts what it costs to talk to.
+ *
+ * Round trips, not statements: a batch of a hundred writes is one request to
+ * D1, and the point of the count is to measure requests, because a Worker is
+ * allowed a bounded number of them per invocation.
+ */
+function counting(inner: SqlDatabase) {
+  let trips = 0
+  const db: SqlDatabase = {
+    all: (sql, params) => (trips += 1, inner.all(sql, params)),
+    get: (sql, params) => (trips += 1, inner.get(sql, params)),
+    run: (sql, params) => (trips += 1, inner.run(sql, params)),
+    batch: (statements: readonly SqlStatement[]) => (
+      (trips += Math.ceil(statements.length / BATCH_SIZE)), inner.batch(statements)
+    ),
+    exec: (sql) => inner.exec(sql),
+  }
+  return { db, trips: () => trips }
+}
+
+/** A statement of `count` lines, every one of them distinct. */
+function statementOf(count: number): string {
+  const lines = ['Date,Description,Debit,Credit']
+  for (let i = 0; i < count; i++) {
+    const day = String((i % 28) + 1).padStart(2, '0')
+    const month = String((i % 3) + 6).padStart(2, '0')
+    lines.push(`${day}/${month}/2026,PAYEE ${i},${((i + 1) / 100).toFixed(2)},`)
+  }
+  return lines.join('\r\n')
+}
+
+describe('a statement at volume', () => {
+  let db: NodeSqlDatabase
+  beforeEach(async () => {
+    db = await freshDatabase()
+  })
+
+  // The rule this whole file is measured against: against D1 a query is a
+  // network round trip, and a Worker may only make so many. A cost that rises
+  // with the number of lines on the statement is not a slow import, it is an
+  // import that stops working somewhere above a thousand rows — and a
+  // thousand-row statement is an ordinary year.
+  it('costs the same to preview whether it holds five lines or five hundred', async () => {
+    const small = counting(db)
+    await previewImport(small.db, ASSEMBLY_ID, BANK, statementOf(5), MAPPING)
+
+    const large = counting(db)
+    await previewImport(large.db, ASSEMBLY_ID, BANK, statementOf(500), MAPPING)
+
+    expect(large.trips()).toBe(small.trips())
+    expect(large.trips()).toBeLessThan(10)
+  })
+
+  it('commits five hundred rows in a handful of round trips', async () => {
+    const csv = statementOf(500)
+    const preview = await previewImport(db, ASSEMBLY_ID, BANK, csv, MAPPING)
+    expect(preview.rows).toHaveLength(500)
+
+    const counted = counting(db)
+    const result = await commitImport(counted.db, ASSEMBLY_ID, {
+      accountId: BANK,
+      filename: 'big.csv',
+      mapping: MAPPING,
+      csvText: csv,
+      accept: preview.rows.map((r) => r.dedupeHash),
+      actor: 'treasurer@riverbend',
+      now: NOW,
+    })
+
+    expect(result.imported).toBe(500)
+    expect(counted.trips()).toBeLessThan(20)
+
+    const landed = await db.get<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM transactions WHERE import_batch_id = ?',
+      [result.batchId],
+    )
+    expect(landed?.n).toBe(500)
+    // And the batch says of itself what it did, without a correcting write.
+    const batch = await db.get<{ imported_count: number; row_count: number }>(
+      'SELECT imported_count, row_count FROM import_batches WHERE id = ?',
+      [result.batchId],
+    )
+    expect(batch).toEqual({ imported_count: 500, row_count: 500 })
+  })
+
+  it('still adds nothing the second time at that size', async () => {
+    const csv = statementOf(300)
+    const first = await previewImport(db, ASSEMBLY_ID, BANK, csv, MAPPING)
+    await commitImport(db, ASSEMBLY_ID, {
+      accountId: BANK,
+      filename: 'big.csv',
+      mapping: MAPPING,
+      csvText: csv,
+      accept: first.rows.map((r) => r.dedupeHash),
+      actor: 'treasurer@riverbend',
+      now: NOW,
+    })
+
+    const second = await previewImport(db, ASSEMBLY_ID, BANK, csv, MAPPING)
+    expect(second.counts.duplicates).toBe(300)
+    expect(second.counts.fresh).toBe(0)
+
+    const again = await commitImport(db, ASSEMBLY_ID, {
+      accountId: BANK,
+      filename: 'big.csv',
+      mapping: MAPPING,
+      csvText: csv,
+      accept: second.rows.map((r) => r.dedupeHash),
+      actor: 'treasurer@riverbend',
+      now: NOW,
+    })
+    expect(again.imported).toBe(0)
   })
 })

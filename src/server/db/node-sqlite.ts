@@ -6,7 +6,7 @@
  */
 
 import { DatabaseSync } from 'node:sqlite'
-import type { SqlDatabase, SqlValue } from './adapter'
+import { chunkStatements, type SqlDatabase, type SqlStatement, type SqlValue } from './adapter'
 
 export interface NodeSqlDatabase extends SqlDatabase {
   close(): void
@@ -31,6 +31,24 @@ export function openNodeDatabase(location = ':memory:'): NodeSqlDatabase {
     async run(sql: string, params: SqlValue[] = []) {
       const result = raw.prepare(sql).run(...params)
       return { changes: Number(result.changes) }
+    },
+    async batch(statements: readonly SqlStatement[]) {
+      // Chunked exactly as D1 chunks it, and wrapped the same way. A batch
+      // that fails has to leave the same state behind in both, or a test
+      // asserting that a bad restore wrote nothing would pass here and be
+      // untrue in production.
+      for (const chunk of chunkStatements(statements)) {
+        raw.exec('BEGIN')
+        try {
+          for (const statement of chunk) {
+            raw.prepare(statement.sql).run(...(statement.params ?? []))
+          }
+          raw.exec('COMMIT')
+        } catch (error) {
+          raw.exec('ROLLBACK')
+          throw error
+        }
+      }
     },
     async exec(sql: string) {
       raw.exec(sql)

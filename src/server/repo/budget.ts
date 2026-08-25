@@ -16,7 +16,7 @@
 import { monthsForYear, nawRuz, toDayIndex } from '../../calendar/badi'
 import type { Cents } from '../../lib/money'
 import { yearProgress } from '../../lib/year-progress'
-import type { SqlDatabase } from '../db/adapter'
+import type { SqlDatabase, SqlStatement } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
 
 /** A budget change that cannot be made, with the reason a treasurer needs. */
@@ -451,6 +451,7 @@ export async function proposeBudget(
   const actuals = await actualsByCategory(db, assemblyId, fromYear)
   const categories = await db.all<CategoryRow>(SELECT_CATEGORIES, [assemblyId])
 
+  const statements: SqlStatement[] = []
   let lines = 0
   let totalCents = 0
   for (const category of categories) {
@@ -459,11 +460,11 @@ export async function proposeBudget(
     // A category nothing went through last year gets no line at all, rather
     // than a zero. Zero is a decision; absence is an open question.
     if (amount <= 0) continue
-    await db.run(
-      `INSERT INTO budgets
+    statements.push({
+      sql: `INSERT INTO budgets
          (id, assembly_id, bahai_year, category_id, amount_cents, note, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+      params: [
         `bud-${bahaiYear}-${category.id}`,
         assemblyId,
         bahaiYear,
@@ -473,19 +474,23 @@ export async function proposeBudget(
         now,
         now,
       ],
-    )
+    })
     lines += 1
     totalCents += amount
   }
 
   const fromMonths = yearProgress(monthsForYear(fromYear), today).monthsClosed
 
-  await db.run(
-    `UPDATE budget_years
+  // The lines and the note saying where they came from go in together. A
+  // draft that existed without its provenance, even briefly, would be a
+  // proposal with no answer to "from what?".
+  statements.push({
+    sql: `UPDATE budget_years
         SET proposed_from_year = ?, proposed_from_months = ?, updated_at = ?
       WHERE assembly_id = ? AND bahai_year = ?`,
-    [fromYear, fromMonths, now, assemblyId, bahaiYear],
-  )
+    params: [fromYear, fromMonths, now, assemblyId, bahaiYear],
+  })
+  await db.batch(statements)
 
   return { bahaiYear, fromYear, fromMonths, lines, totalCents }
 }

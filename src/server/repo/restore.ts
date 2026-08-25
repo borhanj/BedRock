@@ -16,9 +16,9 @@
  * **It checks everything before it writes anything.** The whole bundle is
  * validated first — shape, version, money, and every reference between tables
  * — because the alternative is discovering the file was truncated after half
- * of it is in the database. This matters more than usual here: D1 has no
- * interactive transaction this code can reach through `SqlDatabase`, so a
- * failure part way through genuinely does leave a half-loaded database. The
+ * of it is in the database. This matters more than usual here: the rows go in
+ * as batches, and while a batch is atomic the restore as a whole is not, so a
+ * failure part way through leaves the batches that already committed. The
  * pre-flight is what makes that unlikely, and the empty-target rule is what
  * makes it recoverable — wipe and try again.
  *
@@ -30,7 +30,7 @@
  */
 
 import type { Cents } from '../../lib/money'
-import type { SqlDatabase, SqlValue } from '../db/adapter'
+import type { SqlDatabase, SqlStatement, SqlValue } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
 import {
   HANDOFF_SCHEMA_VERSION,
@@ -304,6 +304,18 @@ export async function restore(
   const tables: Record<string, number> = {}
   let rowsWritten = 0
 
+  // Every row of the bundle as one ordered list of writes, handed over in
+  // batches rather than one at a time.
+  //
+  // A year of a real Assembly's books is thousands of rows once the audit
+  // trail is counted, and a write per row is a network round trip per row
+  // against D1. That is not merely slow: a Worker may only make so many, so
+  // past a certain size the restore stopped part way through — which is the
+  // one operation where being handed half the books is worst. Order still
+  // matters and is preserved: a batch runs in the order it is given, and the
+  // batches run in the order they are sent.
+  const statements: SqlStatement[] = []
+
   for (const table of RESTORE_ORDER) {
     const rows = rowsOf(bundle, table)
     tables[table] = 0
@@ -319,24 +331,28 @@ export async function restore(
       )
       const columns = entries.map(([c]) => c)
 
-      await db.run(
-        `INSERT INTO ${table} (${columns.join(', ')})
+      statements.push({
+        sql: `INSERT INTO ${table} (${columns.join(', ')})
          VALUES (${columns.map(() => '?').join(', ')})`,
-        values as SqlValue[],
-      )
+        params: values as SqlValue[],
+      })
       tables[table] += 1
       rowsWritten += 1
     }
   }
 
   // Now that every cleared item is loaded, close the statements that were
-  // closed when the bundle was taken.
+  // closed when the bundle was taken. Last in the list, so they follow every
+  // insert however the batches happen to divide.
   for (const row of rowsOf(bundle, 'reconciliations')) {
     if (row.status !== 'balanced') continue
-    await db.run("UPDATE reconciliations SET status = 'balanced' WHERE id = ?", [
-      row.id as SqlValue,
-    ])
+    statements.push({
+      sql: "UPDATE reconciliations SET status = 'balanced' WHERE id = ?",
+      params: [row.id as SqlValue],
+    })
   }
+
+  await db.batch(statements)
 
   // One row saying the whole thing happened.
   //

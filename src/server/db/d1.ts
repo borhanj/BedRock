@@ -7,7 +7,7 @@
  * stable; swap in the real types when wrangler arrives at deploy time.
  */
 
-import type { SqlDatabase, SqlValue } from './adapter'
+import { chunkStatements, type SqlDatabase, type SqlStatement, type SqlValue } from './adapter'
 
 export interface D1PreparedStatement {
   bind(...values: SqlValue[]): D1PreparedStatement
@@ -18,6 +18,8 @@ export interface D1PreparedStatement {
 
 export interface D1Database {
   prepare(sql: string): D1PreparedStatement
+  /** Sent as one request, and applied as one implicit transaction. */
+  batch(statements: D1PreparedStatement[]): Promise<unknown[]>
 }
 
 export function openD1(d1: D1Database): SqlDatabase {
@@ -37,6 +39,14 @@ export function openD1(d1: D1Database): SqlDatabase {
     async run(sql: string, params: SqlValue[] = []) {
       const { meta } = await bind(sql, params).run()
       return { changes: meta.changes }
+    },
+    async batch(statements: readonly SqlStatement[]) {
+      // D1's own batch: one round trip per chunk, and each chunk is an
+      // implicit transaction, so a statement that fails takes its chunk with
+      // it rather than leaving a partial write on the books.
+      for (const chunk of chunkStatements(statements)) {
+        await d1.batch(chunk.map((s) => bind(s.sql, s.params ?? [])))
+      }
     },
     async exec() {
       // D1's own exec() requires one statement per line, which mangles the
