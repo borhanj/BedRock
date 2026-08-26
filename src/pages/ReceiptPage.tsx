@@ -71,6 +71,17 @@ export default function ReceiptPage() {
       <article className={`bd-receipt${voided ? ' bd-receipt--void' : ''}`}>
         <header className="bd-receipt__head">
           <div>
+            {/* The name stays whether or not there is a logo: a receipt has to
+                say who issued it in words, and an image is not words to a
+                screen reader or to a photocopier that lost the colour. */}
+            {doc.letterhead && (
+              <img
+                className="bd-receipt__letterhead"
+                src={doc.letterhead}
+                alt=""
+                aria-hidden="true"
+              />
+            )}
             <p className="bd-receipt__eyebrow">Receipt for a contribution</p>
             <h1 className="bd-receipt__assembly">{doc.assemblyName}</h1>
           </div>

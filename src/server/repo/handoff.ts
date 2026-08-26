@@ -25,16 +25,15 @@ import type { SqlDatabase, SqlValue } from '../db/adapter'
 
 /** Bumped when the shape of an export changes in a way an importer must know. */
 /**
+ * 4 — added `branding`, the Assembly's letterhead.
  * 3 — added `opening_checkpoints`, the figures a restatement has to prove
  *     against. 2 added `fund_openings`, the opening position.
  *
  * Bumped whenever the bundle gains a table, because a reader without it drops
- * those rows silently — and dropping either of these changes what the books
- * say rather than merely omitting a detail. Older bundles still load: a
- * version this build has never heard of is refused, a version it has outgrown
- * is not.
+ * those rows silently. Older bundles still load: a version this build has
+ * never heard of is refused, a version it has outgrown is not.
  */
-export const HANDOFF_SCHEMA_VERSION = 3
+export const HANDOFF_SCHEMA_VERSION = 4
 
 /** Something that has to pass between two people, not between two databases. */
 export interface HandoffStep {
@@ -91,6 +90,9 @@ export const RESTORE_ORDER = [
   // balance: what a fund opened with is part of what it holds.
   'fund_openings',
   'opening_checkpoints',
+  // The letterhead. A successor inheriting the books should inherit the
+  // Assembly's own paper along with them.
+  'branding',
   'categories',
   'donors',
   'import_batches',

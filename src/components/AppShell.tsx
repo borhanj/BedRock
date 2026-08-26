@@ -8,6 +8,7 @@ const NAV = [
   { to: '/receipts', label: 'Receipts' },
   { to: '/budget', label: 'Budget' },
   { to: '/audit', label: 'Audit' },
+  { to: '/settings', label: 'Settings' },
 ]
 
 export default function AppShell() {

@@ -36,11 +36,16 @@ describe('the export', () => {
 
     // Read from the database rather than listed here, so a migration that adds
     // a table fails this test instead of quietly exporting an incomplete book.
+    //
+    // Three are deliberately outside a bundle, and each is machine state rather
+    // than a record of anything: which migrations this database has run, who is
+    // currently writing to it, and whether a reset is in progress. Carrying any
+    // of them into a successor's database would say something untrue about it.
     const tables = (
       await db.all<{ name: string }>(
         `SELECT name FROM sqlite_master
           WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-            AND name NOT IN ('schema_migrations', 'audit_actor')`,
+            AND name NOT IN ('schema_migrations', 'audit_actor', 'reset_guard')`,
       )
     ).map((r) => r.name)
 

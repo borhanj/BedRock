@@ -49,9 +49,12 @@ import type {
   RestateResult,
 } from '../server/repo/opening'
 import type { SetupRequest, SetupResult } from '../server/repo/setup'
+import type { ResetResult, SettingsView } from '../server/repo/settings'
 import type { BundleReport, RestoreResult } from '../server/repo/restore'
 
 export type {
+  SettingsView,
+  ResetResult,
   OpeningPosition,
   CheckpointView,
   RestateRequest,
@@ -296,6 +299,7 @@ export interface SetupStatus {
     note: string
   }>
   suggestedCategories: ReadonlyArray<{ label: string; kind: 'income' | 'expense' }>
+  letterheadMaxBytes: number
 }
 
 /**
@@ -312,6 +316,8 @@ export interface OpeningView extends OpeningPosition {
 
 export const fetchOpeningPosition = () => call<OpeningView>('/api/opening')
 
+export const fetchSettings = () => call<SettingsView>('/api/settings')
+
 export const forgetRule = (id: string) =>
   call<{ forgotten: boolean }>(`/api/rules/${encodeURIComponent(id)}`, {
     method: 'DELETE',
@@ -326,6 +332,48 @@ export const resolveOpeningDifference = (body: ResolveRequest) =>
 
 export const restateOpening = (body: RestateRequest) =>
   post<RestateResult>('/api/opening/restate', body)
+
+const patch = <T>(path: string, body: unknown) =>
+  call<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
+
+export const renameAssembly = (name: string, shortName: string) =>
+  post<SettingsView>('/api/settings/assembly', { name, shortName })
+
+export const addAccount = (body: {
+  name: string
+  kind: 'bank' | 'cash'
+  openingBalanceCents: number
+}) => post<SettingsView>('/api/settings/accounts', body)
+
+export const updateAccount = (id: string, body: { name?: string; isActive?: boolean }) =>
+  patch<SettingsView>(`/api/settings/accounts/${encodeURIComponent(id)}`, body)
+
+export const addFund = (body: { key: string; label: string }) =>
+  post<SettingsView>('/api/settings/funds', body)
+
+export const renameFund = (id: string, label: string) =>
+  patch<SettingsView>(`/api/settings/funds/${encodeURIComponent(id)}`, { label })
+
+export const addCategory = (body: {
+  label: string
+  kind: 'income' | 'expense'
+  fundKey?: string | null
+}) => post<SettingsView>('/api/settings/categories', body)
+
+export const updateCategory = (
+  id: string,
+  body: { label?: string; isArchived?: boolean },
+) => patch<SettingsView>(`/api/settings/categories/${encodeURIComponent(id)}`, body)
+
+export const setLetterhead = (dataUrl: string, filename: string | null) =>
+  post<SettingsView>('/api/settings/letterhead', { dataUrl, filename })
+
+export const clearLetterhead = () =>
+  call<SettingsView>('/api/settings/letterhead', { method: 'DELETE' })
+
+/** Destroys everything. The confirmation is the Assembly's name, checked server-side. */
+export const resetEverything = (confirmation: string) =>
+  post<ResetResult>('/api/settings/reset', { confirmation })
 
 export const previewImport = (
   accountId: string,
@@ -421,6 +469,8 @@ export const fetchReceipts = () => call<ReceiptBook>('/api/receipts')
 export interface ReceiptDocument {
   receipt: ReceiptView
   assemblyName: string
+  /** The Assembly's letterhead, if one has been uploaded. */
+  letterhead: string | null
 }
 
 export const fetchReceipt = (id: string) =>

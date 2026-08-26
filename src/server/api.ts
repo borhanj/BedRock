@@ -70,6 +70,21 @@ import {
 } from './repo/opening'
 import { setUpAssembly, setupStatus, SetupError } from './repo/setup'
 import {
+  addAccount,
+  addCategory,
+  addFund,
+  clearLetterhead,
+  loadLetterhead,
+  loadSettings,
+  renameAssembly,
+  renameFund,
+  resetEverything,
+  setLetterhead,
+  updateAccount,
+  updateCategory,
+  SettingsError,
+} from './repo/settings'
+import {
   changeSecret,
   createAnonymousDonor,
   createDonor,
@@ -170,7 +185,8 @@ export async function handleApi(
       error instanceof ReconcileError ||
       error instanceof RestoreError ||
       error instanceof SetupError ||
-      error instanceof OpeningError
+      error instanceof OpeningError ||
+      error instanceof SettingsError
     ) {
       return json({ error: error.message }, 409)
     }
@@ -218,6 +234,8 @@ async function route(
       categories?: Array<{ label: string; kind: 'income' | 'expense'; fundKey?: string }>
       declared?: Record<string, number>
       declaredBy?: string
+      letterheadDataUrl?: string | null
+      letterheadFilename?: string | null
     }
     return json(
       await setUpAssembly(
@@ -231,6 +249,8 @@ async function route(
           categories: body.categories ?? [],
           declared: body.declared ?? {},
           declaredBy: body.declaredBy || ctx.actor,
+          letterheadDataUrl: body.letterheadDataUrl ?? null,
+          letterheadFilename: body.letterheadFilename ?? null,
         },
         ctx.actor, ctx.now,
       ),
@@ -291,6 +311,125 @@ async function route(
         },
         ctx.actor, ctx.now,
       ),
+    )
+  }
+
+  // ── settings ───────────────────────────────────────────────────────────
+  if (path === 'settings' && method === 'GET') {
+    const view = await loadSettings(db, assemblyId)
+    return view ? json(view) : json({ error: 'No such assembly' }, 404)
+  }
+
+  if (path === 'settings/assembly' && method === 'POST') {
+    const body = (await request.json()) as { name?: string; shortName?: string }
+    await renameAssembly(
+      db, assemblyId,
+      required(body.name, 'name'),
+      body.shortName ?? '',
+      ctx.actor,
+    )
+    return json(await loadSettings(db, assemblyId))
+  }
+
+  if (path === 'settings/accounts' && method === 'POST') {
+    const body = (await request.json()) as {
+      name?: string
+      kind?: 'bank' | 'cash'
+      openingBalanceCents?: number
+    }
+    await addAccount(
+      db, assemblyId,
+      {
+        name: required(body.name, 'name'),
+        kind: body.kind === 'cash' ? 'cash' : 'bank',
+        openingBalanceCents: Number(body.openingBalanceCents ?? 0),
+      },
+      ctx.actor, ctx.now,
+    )
+    return json(await loadSettings(db, assemblyId), 201)
+  }
+
+  const account = /^settings\/accounts\/([^/]+)$/.exec(path)
+  if (account && method === 'PATCH') {
+    const body = (await request.json()) as { name?: string; isActive?: boolean }
+    const ok = await updateAccount(
+      db, assemblyId, decodeURIComponent(account[1]),
+      { name: body.name, isActive: body.isActive },
+      ctx.actor,
+    )
+    return ok ? json(await loadSettings(db, assemblyId)) : json({ error: 'No such account' }, 404)
+  }
+
+  if (path === 'settings/funds' && method === 'POST') {
+    const body = (await request.json()) as { key?: string; label?: string }
+    await addFund(
+      db, assemblyId,
+      { key: body.key ?? required(body.label, 'label'), label: required(body.label, 'label') },
+      ctx.actor,
+    )
+    return json(await loadSettings(db, assemblyId), 201)
+  }
+
+  const fund = /^settings\/funds\/([^/]+)$/.exec(path)
+  if (fund && method === 'PATCH') {
+    const body = (await request.json()) as { label?: string }
+    const ok = await renameFund(
+      db, assemblyId, decodeURIComponent(fund[1]), required(body.label, 'label'), ctx.actor,
+    )
+    return ok ? json(await loadSettings(db, assemblyId)) : json({ error: 'No such fund' }, 404)
+  }
+
+  if (path === 'settings/categories' && method === 'POST') {
+    const body = (await request.json()) as {
+      label?: string
+      kind?: 'income' | 'expense'
+      fundKey?: string | null
+    }
+    await addCategory(
+      db, assemblyId,
+      {
+        label: required(body.label, 'label'),
+        kind: body.kind === 'income' ? 'income' : 'expense',
+        fundKey: body.fundKey ?? null,
+      },
+      ctx.actor,
+    )
+    return json(await loadSettings(db, assemblyId), 201)
+  }
+
+  const category = /^settings\/categories\/([^/]+)$/.exec(path)
+  if (category && method === 'PATCH') {
+    const body = (await request.json()) as { label?: string; isArchived?: boolean }
+    const ok = await updateCategory(
+      db, assemblyId, decodeURIComponent(category[1]),
+      { label: body.label, isArchived: body.isArchived },
+      ctx.actor,
+    )
+    return ok ? json(await loadSettings(db, assemblyId)) : json({ error: 'No such category' }, 404)
+  }
+
+  if (path === 'settings/letterhead' && method === 'POST') {
+    const body = (await request.json()) as { dataUrl?: string; filename?: string | null }
+    await setLetterhead(
+      db, assemblyId,
+      required(body.dataUrl, 'dataUrl'),
+      body.filename ?? null,
+      ctx.actor, ctx.now,
+    )
+    return json(await loadSettings(db, assemblyId))
+  }
+
+  if (path === 'settings/letterhead' && method === 'DELETE') {
+    await clearLetterhead(db, assemblyId, ctx.actor, ctx.now)
+    return json(await loadSettings(db, assemblyId))
+  }
+
+  // Destroys everything. The confirmation is checked in the repo against the
+  // Assembly's own name, so a client cannot shortcut it.
+  if (path === 'settings/reset' && method === 'POST') {
+    const body = (await request.json()) as { confirmation?: string }
+    return json(
+      await resetEverything(db, assemblyId, required(body.confirmation, 'confirmation'), ctx.actor),
     )
   }
 
@@ -671,11 +810,11 @@ async function route(
   if (oneReceipt && method === 'GET') {
     const receipt = await readReceipt(db, assemblyId, decodeURIComponent(oneReceipt[1]))
     if (!receipt) return json({ error: 'No such receipt' }, 404)
-    const assembly = await db.get<{ name: string }>(
-      'SELECT name FROM assemblies WHERE id = ?',
-      [assemblyId],
-    )
-    return json({ receipt, assemblyName: assembly?.name ?? '' })
+    const [assembly, letterhead] = await Promise.all([
+      db.get<{ name: string }>('SELECT name FROM assemblies WHERE id = ?', [assemblyId]),
+      loadLetterhead(db, assemblyId),
+    ])
+    return json({ receipt, assemblyName: assembly?.name ?? '', letterhead })
   }
 
   if (path === 'receipts' && method === 'POST') {

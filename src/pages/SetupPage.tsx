@@ -89,10 +89,17 @@ function SetupForm({
   const [openedOn, setOpenedOn] = useState(todayISO())
   const [declaredBy, setDeclaredBy] = useState('')
 
+  // Two to start with because almost every Assembly has exactly these two, but
+  // both removable and any number addable: some keep a second bank account for
+  // a building fund, some keep none and run entirely on cash, and some run two
+  // cash boxes because two people collect at Feast.
   const [accounts, setAccounts] = useState<AccountDraft[]>([
     { name: '', kind: 'bank', amount: '' },
     { name: 'Cash box', kind: 'cash', amount: '' },
   ])
+  const [letterhead, setLetterhead] = useState<{ dataUrl: string; filename: string } | null>(
+    null,
+  )
 
   const [funds, setFunds] = useState<FundDraft[]>(
     status.suggestedFunds.map((f) => ({
@@ -125,6 +132,12 @@ function SetupForm({
 
   const setAccount = (i: number, patch: Partial<AccountDraft>) =>
     setAccounts((prev) => prev.map((a, j) => (j === i ? { ...a, ...patch } : a)))
+
+  const addAccount = (kind: 'bank' | 'cash') =>
+    setAccounts((prev) => [...prev, { name: '', kind, amount: '' }])
+
+  const removeAccount = (i: number) =>
+    setAccounts((prev) => prev.filter((_, j) => j !== i))
 
   const setFund = (key: string, patch: Partial<FundDraft>) =>
     setFunds((prev) => prev.map((f) => (f.key === key ? { ...f, ...patch } : f)))
@@ -189,6 +202,8 @@ function SetupForm({
             chosen.map((f) => [f.key, parseMoney(f.declared) ?? 0]),
           ),
           declaredBy: declaredBy.trim(),
+          letterheadDataUrl: letterhead?.dataUrl ?? null,
+          letterheadFilename: letterhead?.filename ?? null,
         })
         onOpened()
       } catch (cause) {
@@ -198,8 +213,8 @@ function SetupForm({
       }
     },
     [
-      accounts, assemblyName, categories, chosen, declaredBy, onOpened, openedOn,
-      shortName, status.suggestedCategories,
+      accounts, assemblyName, categories, chosen, declaredBy, letterhead, onOpened,
+      openedOn, shortName, status.suggestedCategories,
     ],
   )
 
@@ -269,7 +284,7 @@ function SetupForm({
             <div className="bd-formrow" key={i}>
               <label className="bd-field">
                 <span className="bd-field__label">
-                  {account.kind === 'bank' ? 'Bank account' : 'Cash'}
+                  {account.kind === 'bank' ? 'Bank account' : 'Cash journal'}
                 </span>
                 <input
                   className="bd-input"
@@ -290,11 +305,46 @@ function SetupForm({
                   placeholder="0.00"
                 />
               </label>
+              <div className="bd-field">
+                <span className="bd-field__label">&nbsp;</span>
+                <button
+                  type="button"
+                  className="bd-btn bd-btn--ghost"
+                  onClick={() => removeAccount(i)}
+                  disabled={accounts.length === 1}
+                  aria-label={`Remove ${account.name || 'this account'}`}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           ))}
 
+          <div className="bd-actions">
+            <button
+              type="button"
+              className="bd-btn bd-btn--ghost"
+              onClick={() => addAccount('bank')}
+            >
+              Add a bank account
+            </button>
+            <button
+              type="button"
+              className="bd-btn bd-btn--ghost"
+              onClick={() => addAccount('cash')}
+            >
+              Add a cash journal
+            </button>
+          </div>
+
           <p className="bd-note">On hand at opening: {formatMoney(onHandCents)}</p>
         </section>
+
+        <LetterheadField
+          value={letterhead}
+          maxBytes={status.letterheadMaxBytes}
+          onChange={setLetterhead}
+        />
 
         <section className="bd-card bd-card--wide">
           <div className="bd-card__head">
@@ -431,6 +481,87 @@ function SetupForm({
         </div>
       </form>
     </main>
+  )
+}
+
+/**
+ * The Assembly's letterhead, for the top of a receipt.
+ *
+ * Optional here and changeable later from Settings — a treasurer opening the
+ * books on a Sunday afternoon should not be stopped by not having the logo to
+ * hand. Read in the browser and sent as a data URL: the server checks the type
+ * and the size again on arrival, because a limit enforced only by the page that
+ * happens to be open is not a limit.
+ */
+export function LetterheadField({
+  value,
+  maxBytes,
+  onChange,
+}: {
+  value: { dataUrl: string; filename: string } | null
+  maxBytes: number
+  onChange: (value: { dataUrl: string; filename: string } | null) => void
+}) {
+  const [problem, setProblem] = useState<string | null>(null)
+
+  const read = (file: File) => {
+    setProblem(null)
+    if (file.size > maxBytes) {
+      setProblem(
+        `That image is ${Math.round(file.size / 1024)}kB and the limit is ` +
+          `${Math.round(maxBytes / 1024)}kB. It is stored in the database and carried ` +
+          'inside every backup, so scale it down first.',
+      )
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => onChange({ dataUrl: String(reader.result), filename: file.name })
+    reader.onerror = () => setProblem('That file could not be read.')
+    reader.readAsDataURL(file)
+  }
+
+  return (
+    <section className="bd-card bd-card--wide">
+      <div className="bd-card__head">
+        <h2 className="bd-card__title">Letterhead</h2>
+        <p className="bd-card__hint">
+          Printed at the top of every receipt, so what a contributor is handed looks like it
+          came from the Assembly. Optional, and changeable later in Settings. Up to{' '}
+          {Math.round(maxBytes / 1024)}kB — a logo, not a photograph.
+        </p>
+      </div>
+
+      {value ? (
+        <>
+          <img
+            src={value.dataUrl}
+            alt="The Assembly's letterhead"
+            style={{ maxWidth: '320px', maxHeight: '120px' }}
+          />
+          <p className="bd-note">{value.filename}</p>
+          <div className="bd-actions">
+            <button type="button" className="bd-btn bd-btn--ghost" onClick={() => onChange(null)}>
+              Remove it
+            </button>
+          </div>
+        </>
+      ) : (
+        <label className="bd-field">
+          <span className="bd-field__label">Choose an image</span>
+          <input
+            type="file"
+            className="bd-input"
+            accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) read(file)
+            }}
+          />
+        </label>
+      )}
+
+      {problem && <p className="bd-warn">{problem}</p>}
+    </section>
   )
 }
 

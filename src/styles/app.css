@@ -1695,3 +1695,13 @@ a {
   font-style: italic;
   color: var(--bd-muted);
 }
+
+/* The Assembly's own paper, at the top of a receipt. Capped so a large upload
+   cannot push the figures off the page, and it prints as it appears. */
+.bd-receipt__letterhead {
+  display: block;
+  max-width: 260px;
+  max-height: 90px;
+  margin-bottom: 12px;
+  object-fit: contain;
+}

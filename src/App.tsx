@@ -19,6 +19,7 @@ import AuditPage, { AuditLayout } from './pages/AuditPage'
 import HandoffPage from './pages/HandoffPage'
 import ReceiptPage from './pages/ReceiptPage'
 import SetupPage from './pages/SetupPage'
+import SettingsPage from './pages/SettingsPage'
 
 /**
  * The nav is the six destinations from the source design, all of them now
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="receipts" element={<ReceiptsPage />} />
         <Route path="receipts/:id" element={<ReceiptPage />} />
         <Route path="budget" element={<BudgetPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="audit" element={<AuditLayout />}>
           <Route index element={<AuditPage />} />
           <Route path="handover" element={<HandoffPage />} />

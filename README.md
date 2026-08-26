@@ -91,7 +91,16 @@ contains them. When the previous year's journal turns up, `/setup` on an Assembl
 already has books is where the wall moves — and moving it leaves a checkpoint, so the
 history loaded behind it has to reproduce the figure the Assembly had already accepted.
 
-All six nav destinations are built, plus setup outside them. There are no placeholders
+**Phase 9 — settings, and starting over.** `/settings`: rename the Assembly, add and
+retire bank accounts and cash journals, add and rename funds, add and archive categories,
+and upload the letterhead that prints at the top of every receipt. Setup takes any number
+of accounts of either kind and a letterhead of its own.
+
+And the way out of a demonstration: *Clear these books and start again* deletes everything
+and leaves a database ready to be set up, behind the Assembly's name typed back and with
+the backup offered first. It is the only operation in Bedrock that destroys records.
+
+All seven nav destinations are built, plus setup outside them. There are no placeholders
 left.
 
 ### It is deployed
@@ -149,7 +158,7 @@ Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **385 passing**;
+Everything below is current as of the last commit. `npm test` should show **404 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
@@ -248,6 +257,7 @@ src/
                repo/funds.ts     sub-ledgers, the fund partition, remittance
                repo/budget.ts    planned against actual, and next year's draft
                repo/reconcile.ts the statement, ticked off
+               repo/settings.ts  what setup got wrong, and clearing it all
                repo/setup.ts     opening an Assembly's books from nothing
                repo/opening.ts   the opening position, the difference in it, and
                                  moving the wall backwards
@@ -259,8 +269,8 @@ src/
                YearContext.tsx   the year, fetched once and shared
   components/  AppShell, NineteenMonths, WhereMoneySits, NeedsAttention,
                NextFeast, Loading, ErrorPanel
-  pages/       SetupPage, OpeningPage, YearDashboard, FeastReportPage,
-               YearSummaryPage, LedgerPage,
+  pages/       SetupPage, OpeningPage, SettingsPage, YearDashboard,
+               FeastReportPage, YearSummaryPage, LedgerPage,
                ImportPage, CashJournalPage, ReceiptsPage, FundsPage,
                RemittancePage, BudgetPage, ReconcilePage, AuditPage,
                HandoffPage, ReceiptPage
@@ -433,6 +443,46 @@ over-forwarded — and only one of them learned about openings. The dashboard sa
 held while the remittance screen refused to forward $250, with nothing on either screen to
 explain the contradiction. They now share one SQL expression, `fundHeldCents`, so they cannot
 drift again.
+
+**Rename freely, remove nothing.** An account, fund or category that has ever had money
+against it is never deleted from Settings. Every past report points at these rows, and a
+Feast report that has been read aloud to a community cannot be made to refer to something
+that no longer exists. Retiring an account or archiving a category takes it out of the
+lists a treasurer picks from and leaves every figure and every past document intact.
+
+A fund cannot change sides either. Exactly one fund is the Assembly's own — it is the
+residual of the partition — so promoting a second would silently re-partition every balance
+the app has ever shown. A fund added in Settings is always one held for another institution.
+
+**The letterhead lives in the database, and that is a deliberate compromise.** R2 is the
+right home for files and is where receipt images will go, but it needs a bucket and a
+binding this deployment does not have, and a feature that ships dark is not a feature. One
+logo per Assembly, capped at 400kB and validated server-side for type and size, is small
+enough that a database row is honest. A thousand receipt photographs would not be, which is
+why they still wait for R2.
+
+It is validated on arrival rather than trusted from the browser: the string is rendered into
+an `<img src>`, and `data:text/html` there is the kind of thing that only looks harmless. It
+lives in its own table rather than on `assemblies`, because that row is read by every screen
+in the app to put a name in the corner and should not carry a hundred kilobytes of image.
+
+**Clearing the books is the one thing here that destroys records.** Six triggers in this
+schema refuse a DELETE — receipts, approved budget lines, balanced reconciliations and their
+items, opening figures, checkpoints — and every one of them is right, because each protects
+a record whose absence would read as evidence destroyed. Deleting a receipt leaves a hole in
+a book; deleting the book is a different act, and one an Assembly is entitled to perform on a
+database holding a demonstration.
+
+So the guards consult `reset_guard` rather than being dropped and recreated at runtime. The
+flag is raised and lowered inside the same batch, so a failure part way through rolls back to
+a protected database rather than leaving one where receipts are deletable. Its absence means
+protected: a missing row makes the subquery NULL, and `NULL IS NOT 1` is true, so the trigger
+fires. Failing closed is the only acceptable default.
+
+The audit trail goes too, and that is not a side effect to soften. An audit trail of books
+that no longer exist is not evidence of anything, and leaving it would put entries about a
+community the next Assembly has never heard of into its first report. The screen puts the
+backup download above the button for that reason — the export is the only way back.
 
 **The opening date is a wall, and the importer enforces it.** A row dated before the books
 open is marked `before-opening` and never written, whatever the client asks. The reason is

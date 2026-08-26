@@ -29,6 +29,7 @@ import type { Cents } from '../../lib/money'
 import type { SqlDatabase, SqlStatement } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
 import { assertOwnFundStated, entryStatement } from './opening'
+import { setLetterhead, LETTERHEAD_MAX_BYTES } from './settings'
 
 export class SetupError extends Error {}
 
@@ -137,6 +138,9 @@ export interface SetupRequest {
   readonly declared: Readonly<Record<string, Cents>>
   /** Whose figures these are — usually the outgoing treasurer. */
   readonly declaredBy: string
+  /** The Assembly's letterhead, for the top of a receipt. Optional. */
+  readonly letterheadDataUrl?: string | null
+  readonly letterheadFilename?: string | null
 }
 
 export interface SetupResult {
@@ -168,6 +172,7 @@ export async function setupStatus(db: SqlDatabase, assemblyId: string) {
     openedOn: assembly?.opened_on ?? null,
     suggestedFunds: SUGGESTED_FUNDS,
     suggestedCategories: SUGGESTED_CATEGORIES,
+    letterheadMaxBytes: LETTERHEAD_MAX_BYTES,
   }
 }
 
@@ -340,6 +345,21 @@ export async function setUpAssembly(
   })
 
   await db.batch(statements)
+
+  // After the batch, because it references the assembly the batch creates. A
+  // letterhead that fails validation should not take the books down with it —
+  // the Assembly exists by this point and the treasurer can upload another
+  // from Settings.
+  if (request.letterheadDataUrl) {
+    await setLetterhead(
+      db,
+      assemblyId,
+      request.letterheadDataUrl,
+      request.letterheadFilename ?? null,
+      actor,
+      now,
+    )
+  }
 
   return {
     assemblyId,
