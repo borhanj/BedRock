@@ -166,7 +166,7 @@ Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **407 passing**;
+Everything below is current as of the last commit. `npm test` should show **411 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
@@ -266,6 +266,7 @@ src/
                repo/budget.ts    planned against actual, and next year's draft
                repo/reconcile.ts the statement, ticked off
                repo/settings.ts  what setup got wrong, and clearing it all
+               repo/started.ts   what a new treasurer still has to do
                repo/setup.ts     opening an Assembly's books from nothing
                repo/opening.ts   the opening position, the difference in it, and
                                  moving the wall backwards
@@ -276,7 +277,7 @@ src/
   data/        api.ts            browser fetch helpers
                YearContext.tsx   the year, fetched once and shared
   components/  AppShell, NineteenMonths, WhereMoneySits, NeedsAttention,
-               NextFeast, Loading, ErrorPanel
+               NextFeast, GettingStarted, Loading, ErrorPanel
   pages/       SetupPage, OpeningPage, SettingsPage, YearDashboard,
                FeastReportPage, YearSummaryPage, LedgerPage,
                ImportPage, CashJournalPage, ReceiptsPage, FundsPage,
@@ -451,6 +452,29 @@ over-forwarded — and only one of them learned about openings. The dashboard sa
 held while the remittance screen refused to forward $250, with nothing on either screen to
 explain the contradiction. They now share one SQL expression, `fundHeldCents`, so they cannot
 drift again.
+
+**A disabled button has to look disabled.** There was no rule for it anywhere in the
+stylesheet, so every control the app switches off — the wizard's *Next*, *Save* in Settings,
+the reset — stayed fully coloured and simply did nothing when clicked. Someone reasonably
+concludes the app is broken rather than that they have not finished the form. This was
+found by a treasurer clicking a live-looking *Delete everything* that was inert.
+
+**The reset's ceremony scales with what is at risk.** Real books ask for the Assembly's name
+typed back, because knowing which books you are destroying is the only thing worth proving.
+The sample books ask for nothing at all: not one figure in them belongs to anybody, the app
+has said so on every screen since the treasurer arrived, and making them transcribe a long
+name they did not choose is an obstacle between a new user and a usable app rather than a
+safeguard. Guarding a demonstration as though it were an Assembly's accounts teaches people
+that this app's warnings are noise.
+
+**The getting-started checklist is detected, never remembered.** No dismissed column, and
+nothing ticked because a screen was visited — a step is done when the database shows it
+done. That is what stops the list drifting from the books, being wrong after a restore, or
+congratulating anybody for work they have not finished. It also means a step can go back to
+undone, which is correct: un-approving a budget really does leave that work outstanding, and
+a stored flag would have hidden it. Exactly one step is ever *next*, so the card answers
+"what do I do now?" rather than presenting a list of chores, and it removes itself once
+there is nothing left to say.
 
 **A deployment full of a demonstration looks exactly like one in use.** Same screens, same
 confident totals, and no reason for a treasurer who does not already know to go looking for

@@ -21,6 +21,7 @@ import { exportEverything } from './repo/handoff'
 import { restore } from './repo/restore'
 import { setUpAssembly, setupStatus } from './repo/setup'
 import { loadChoices } from './repo/ledger'
+import { loadGettingStarted } from './repo/started'
 import { handleApi } from './api'
 import { ASSEMBLY_ID, SEED_TODAY, seed } from './seed'
 
@@ -245,12 +246,43 @@ describe('clearing a database that only ever held a demonstration', () => {
     db = await seeded()
   })
 
-  it('refuses without the Assembly’s name typed back', async () => {
-    await expect(resetEverything(db, ASSEMBLY_ID, 'yes', ACTOR)).rejects.toThrow(
+  // The ceremony scales with what is at risk. Nothing in the sample books
+  // belongs to anybody, and making a new treasurer transcribe a long name they
+  // did not choose is an obstacle between them and a usable app rather than a
+  // safeguard.
+  it('asks nothing of the sample books', async () => {
+    const result = await resetEverything(db, ASSEMBLY_ID, '', ACTOR)
+    expect(result.rowsDeleted).toBeGreaterThan(0)
+  })
+
+  it('still demands the name for an Assembly’s real books', async () => {
+    const real = openNodeDatabase(':memory:')
+    await migrate(real)
+    await setUpAssembly(
+      real, ASSEMBLY_ID,
+      {
+        assemblyName: 'Riverbend Local Spiritual Assembly',
+        shortName: 'Riverbend',
+        openedOn: '2026-08-01',
+        funds: [{ key: 'local', label: 'Local Fund', isPassthrough: false }],
+        accounts: [{ name: 'Bank', kind: 'bank', openingBalanceCents: 100_000 }],
+        categories: [],
+        declared: { local: 100_000 },
+        declaredBy: 'outgoing',
+      },
+      ACTOR, NOW,
+    )
+
+    await expect(resetEverything(real, ASSEMBLY_ID, 'yes', ACTOR)).rejects.toThrow(
       /type the Assembly's name back/,
     )
-    const still = await db.get<{ n: number }>('SELECT COUNT(*) AS n FROM transactions')
-    expect(still!.n).toBeGreaterThan(0)
+    const survived = await real.get<{ n: number }>('SELECT COUNT(*) AS n FROM accounts')
+    expect(survived!.n).toBe(1)
+
+    const done = await resetEverything(
+      real, ASSEMBLY_ID, 'Riverbend Local Spiritual Assembly', ACTOR,
+    )
+    expect(done.rowsDeleted).toBeGreaterThan(0)
   })
 
   it('leaves a database ready to be set up again', async () => {
@@ -306,25 +338,68 @@ describe('clearing a database that only ever held a demonstration', () => {
     expect(log?.n).toBe(0)
   })
 
-  it('is reachable over the wire, and refuses the same way', async () => {
+  it('is reachable over the wire', async () => {
     const ctx = { db, assemblyId: ASSEMBLY_ID, actor: ACTOR, today: SEED_TODAY, now: NOW }
-    const refused = await handleApi(
-      new Request('http://x/api/settings/reset', {
-        method: 'POST',
-        body: JSON.stringify({ confirmation: 'nope' }),
-      }),
-      ctx,
-    )
-    expect(refused?.status).toBe(409)
-
-    const assembly = await db.get<{ name: string }>('SELECT name FROM assemblies')
     const done = await handleApi(
       new Request('http://x/api/settings/reset', {
         method: 'POST',
-        body: JSON.stringify({ confirmation: assembly!.name }),
+        body: JSON.stringify({ confirmation: '' }),
       }),
       ctx,
     )
     expect(done?.status).toBe(200)
+    expect(await setupStatus(db, ASSEMBLY_ID)).toMatchObject({ isSetUp: false })
+  })
+})
+
+describe('what a new treasurer does next', () => {
+  it('points at importing a statement when the books are empty', async () => {
+    const db = openNodeDatabase(':memory:')
+    await migrate(db)
+    await setUpAssembly(
+      db, ASSEMBLY_ID,
+      {
+        assemblyName: 'Riverbend Local Spiritual Assembly',
+        shortName: 'Riverbend',
+        openedOn: '2026-08-01',
+        funds: [{ key: 'local', label: 'Local Fund', isPassthrough: false }],
+        accounts: [{ name: 'Bank', kind: 'bank', openingBalanceCents: 100_000 }],
+        categories: [],
+        declared: { local: 100_000 },
+        declaredBy: 'outgoing',
+      },
+      ACTOR, NOW,
+    )
+
+    const started = await loadGettingStarted(db, ASSEMBLY_ID)
+    expect(started.doneCount).toBe(0)
+    expect(started.complete).toBe(false)
+    // Exactly one, so the card can answer "what now?" rather than list chores.
+    expect(started.steps.filter((s) => s.next).map((s) => s.key)).toEqual(['import'])
+  })
+
+  // Read from the books, never from a record of what has been clicked. That is
+  // what stops the list drifting from reality — and it means a step can go back
+  // to undone, which a stored flag would have hidden.
+  it('reads every tick from the data rather than from a flag', async () => {
+    const db = await seeded()
+    const started = await loadGettingStarted(db, ASSEMBLY_ID)
+
+    const byKey = Object.fromEntries(started.steps.map((s) => [s.key, s]))
+    expect(byKey.import.done).toBe(true)
+    expect(byKey.report.done).toBe(true)
+    // The fixture deliberately leaves the current month uncategorised, so this
+    // step is genuinely outstanding and the list says so.
+    expect(byKey.categorise.done).toBe(false)
+    expect(byKey.categorise.status).toMatch(/still uncategorised/)
+  })
+
+  it('has nothing left to say once every step is done', async () => {
+    const db = await seeded()
+    const started = await loadGettingStarted(db, ASSEMBLY_ID)
+    // Not complete for the fixture — the point of the assertion is that
+    // `complete` is derived from the steps rather than asserted separately.
+    expect(started.complete).toBe(started.steps.every((s) => s.done))
+    expect(started.doneCount).toBe(started.steps.filter((s) => s.done).length)
   })
 })

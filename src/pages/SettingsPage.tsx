@@ -608,13 +608,15 @@ function DangerSection({ view }: { view: SettingsView }) {
         <p className="bd-card__hint">
           Deletes every transaction, receipt, report, fund, donor record and audit entry,
           and leaves the app ready to be set up for your Assembly. It cannot be undone from
-          inside the app — the backup below is the only way back.
+          inside the app — a backup is the only way back.
         </p>
       </div>
 
       <div className="bd-formrow">
         <div className="bd-field">
-          <span className="bd-field__label">First, take a backup</span>
+          <span className="bd-field__label">
+            {view.isSampleData ? 'Take a copy first, if you want one' : 'First, take a backup'}
+          </span>
           <button
             type="button"
             className="bd-btn bd-btn--solid"
@@ -624,19 +626,34 @@ function DangerSection({ view }: { view: SettingsView }) {
             {backingUp ? 'Preparing…' : backup ? 'Download another' : 'Download a backup'}
           </button>
         </div>
-        <div className="bd-field">
-          <span className="bd-field__label">
-            {view.isSampleData ? 'Then type this to confirm' : `Then type “${view.name}”`}
-          </span>
-          <input
-            className="bd-input"
-            value={confirmation}
-            onChange={(e) => setConfirmation(e.target.value)}
-            placeholder={view.name}
-            aria-label={`Type ${view.name} to confirm`}
-          />
-        </div>
+
+        {/* Nothing to type for the sample books. Not one figure in them belongs
+            to anybody, and making a new treasurer transcribe a long name they
+            did not choose is an obstacle between them and a usable app, not a
+            safeguard. Real books ask for the name, because knowing which books
+            you are destroying is the only thing worth proving. */}
+        {!view.isSampleData && (
+          <label className="bd-field bd-field--wide">
+            <span className="bd-field__label">
+              Then type <strong>{view.name}</strong> to confirm
+            </span>
+            <input
+              className="bd-input"
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        )}
       </div>
+
+      {!view.isSampleData && confirmation.trim() !== '' && confirmation !== view.name && (
+        <p className="bd-note">
+          That is not it yet. It has to match exactly, including “{view.name.split(' ')[0]}”
+          and every word after it.
+        </p>
+      )}
 
       {backup ? (
         <p className="bd-note">
@@ -668,10 +685,14 @@ function DangerSection({ view }: { view: SettingsView }) {
         <button
           type="button"
           className="bd-btn bd-btn--primary"
-          disabled={busy || confirmation !== view.name}
+          disabled={busy || (!view.isSampleData && confirmation !== view.name)}
           onClick={() => void reset()}
         >
-          {busy ? 'Clearing…' : 'Delete everything and start fresh'}
+          {busy
+            ? 'Clearing…'
+            : view.isSampleData
+              ? 'Clear the sample books'
+              : 'Delete everything and start fresh'}
         </button>
       </div>
     </section>

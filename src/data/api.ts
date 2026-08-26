@@ -50,9 +50,12 @@ import type {
 } from '../server/repo/opening'
 import type { SetupRequest, SetupResult } from '../server/repo/setup'
 import type { ResetResult, SettingsView } from '../server/repo/settings'
+import type { GettingStarted, StartStep } from '../server/repo/started'
 import type { BundleReport, RestoreResult } from '../server/repo/restore'
 
 export type {
+  GettingStarted,
+  StartStep,
   SettingsView,
   ResetResult,
   OpeningPosition,
@@ -318,6 +321,8 @@ export interface OpeningView extends OpeningPosition {
 export const fetchOpeningPosition = () => call<OpeningView>('/api/opening')
 
 export const fetchSettings = () => call<SettingsView>('/api/settings')
+
+export const fetchGettingStarted = () => call<GettingStarted>('/api/getting-started')
 
 export const forgetRule = (id: string) =>
   call<{ forgotten: boolean }>(`/api/rules/${encodeURIComponent(id)}`, {

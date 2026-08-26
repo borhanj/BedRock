@@ -134,6 +134,23 @@ a {
   transition: background-color 120ms ease;
 }
 
+/* A disabled button has to look disabled.
+   There was no rule for this at all, so every control the app switches off —
+   the wizard's Next, Save in Settings, the reset — stayed fully coloured and
+   simply did nothing when clicked. Someone reasonably concludes the app is
+   broken rather than that they have not finished the form. */
+.bd-btn:disabled,
+.bd-btn[aria-disabled='true'] {
+  opacity: 0.42;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+.bd-btn:disabled:hover,
+.bd-btn[aria-disabled='true']:hover {
+  background: inherit;
+}
+
 .bd-btn--solid {
   background: var(--bd-ink);
   color: var(--bd-surface);
@@ -1774,4 +1791,27 @@ a {
   color: var(--bd-text);
   font-weight: 600;
   border-bottom-color: var(--bd-primary-deep);
+}
+
+/* A field whose label carries a whole Assembly name needs the room for it. */
+.bd-field--wide {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+
+/* How far through getting started. Deliberately plain: it is a fact about
+   work remaining, not a score. */
+.bd-progress {
+  height: 6px;
+  margin: 4px 0 8px;
+  overflow: hidden;
+  background: var(--bd-border);
+  border-radius: 3px;
+}
+
+.bd-progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--bd-primary-deep);
+  transition: width 200ms ease;
 }

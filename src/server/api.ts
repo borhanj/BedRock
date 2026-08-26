@@ -69,6 +69,7 @@ import {
   OpeningError,
 } from './repo/opening'
 import { setUpAssembly, setupStatus, SetupError } from './repo/setup'
+import { loadGettingStarted } from './repo/started'
 import {
   addAccount,
   addCategory,
@@ -314,6 +315,11 @@ async function route(
     )
   }
 
+  // ── what to do next ────────────────────────────────────────────────────
+  if (path === 'getting-started' && method === 'GET') {
+    return json(await loadGettingStarted(db, assemblyId))
+  }
+
   // ── settings ───────────────────────────────────────────────────────────
   if (path === 'settings' && method === 'GET') {
     const view = await loadSettings(db, assemblyId)
@@ -424,13 +430,14 @@ async function route(
     return json(await loadSettings(db, assemblyId))
   }
 
-  // Destroys everything. The confirmation is checked in the repo against the
-  // Assembly's own name, so a client cannot shortcut it.
+  // Destroys everything. Whether a confirmation is needed at all, and what it
+  // has to say, is decided in the repo against the stored Assembly name — not
+  // here, and not by the client. An empty one is passed through rather than
+  // rejected: for the sample books none is required, and the route should not
+  // hold an opinion the repo has already formed.
   if (path === 'settings/reset' && method === 'POST') {
     const body = (await request.json()) as { confirmation?: string }
-    return json(
-      await resetEverything(db, assemblyId, required(body.confirmation, 'confirmation'), ctx.actor),
-    )
+    return json(await resetEverything(db, assemblyId, body.confirmation ?? '', ctx.actor))
   }
 
   // ── the year ───────────────────────────────────────────────────────────

@@ -594,7 +594,21 @@ export async function resetEverything(
   )
   if (!assembly) throw new SettingsError('There are no books here to clear.')
 
-  if (confirmation.trim() !== assembly.name) {
+  // The ceremony scales with what is at risk, which is the whole point of
+  // having any.
+  //
+  // Real books: the Assembly's name typed back. It proves the person knows
+  // which books they are about to destroy, which is the only thing worth
+  // proving here.
+  //
+  // The sample books: nothing. Not one figure in them belongs to anybody, the
+  // treasurer has been told so on every screen since they arrived, and making
+  // them transcribe a long name they did not choose is not a safeguard — it is
+  // an obstacle between a new user and a usable app, and the first thing they
+  // meet. Guarding a demonstration as though it were an Assembly's accounts
+  // teaches people that this app's warnings are noise.
+  const sample = await isSampleData(db, assemblyId)
+  if (!sample && confirmation.trim() !== assembly.name) {
     throw new SettingsError(
       `To clear these books, type the Assembly's name back exactly: "${assembly.name}". ` +
         'This deletes every transaction, receipt, report and audit entry, and it cannot ' +

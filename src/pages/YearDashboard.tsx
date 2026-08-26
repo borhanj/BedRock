@@ -5,6 +5,7 @@ import NineteenMonths from '../components/NineteenMonths'
 import WhereMoneySits from '../components/WhereMoneySits'
 import NeedsAttention from '../components/NeedsAttention'
 import NextFeast from '../components/NextFeast'
+import GettingStarted from '../components/GettingStarted'
 import Loading from '../components/Loading'
 import ErrorPanel from '../components/ErrorPanel'
 import { useYearState } from '../data/YearContext'
@@ -45,6 +46,8 @@ export default function YearDashboard() {
           <Stat label="On hand today" value={year.onHandTodayCents} tone="inverse" />
         </div>
       </div>
+
+      <GettingStarted />
 
       <NineteenMonths
         bahaiYear={year.bahaiYear}
