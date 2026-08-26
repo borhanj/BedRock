@@ -290,6 +290,7 @@ export const fetchRules = () => call<RuleView[]>('/api/rules')
 export interface SetupStatus {
   assemblyId: string
   isSetUp: boolean
+  isSampleData: boolean
   assemblyName: string | null
   openedOn: string | null
   suggestedFunds: ReadonlyArray<{

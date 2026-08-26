@@ -1705,3 +1705,73 @@ a {
   margin-bottom: 12px;
   object-fit: contain;
 }
+
+/* Sample-data banner. Sits under the nav on every screen while the database
+   still holds the worked example, and goes the moment it does not. */
+.bd-banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--bd-accent-pale);
+  border-bottom: 1px solid var(--bd-border);
+  font: 400 14px/1.5 var(--bd-font-sans);
+  color: var(--bd-text);
+}
+
+.bd-banner strong {
+  font-weight: 600;
+}
+
+@media print {
+  .bd-banner {
+    display: none;
+  }
+}
+
+/* The setup walkthrough's step rail. Horizontal on a laptop, wrapping on a
+   phone; the current step is the only one that carries weight. */
+.bd-wizard {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  counter-reset: bd-wizard;
+}
+
+.bd-wizard__step {
+  counter-increment: bd-wizard;
+}
+
+.bd-wizard__link {
+  padding: 4px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font: 400 13px var(--bd-font-sans);
+  color: var(--bd-muted);
+  cursor: pointer;
+}
+
+.bd-wizard__link::before {
+  content: counter(bd-wizard) '. ';
+}
+
+.bd-wizard__link:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.bd-wizard__step--done .bd-wizard__link {
+  color: var(--bd-primary-deep);
+}
+
+.bd-wizard__step--current .bd-wizard__link {
+  color: var(--bd-text);
+  font-weight: 600;
+  border-bottom-color: var(--bd-primary-deep);
+}

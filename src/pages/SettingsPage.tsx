@@ -13,6 +13,7 @@ import {
   setLetterhead,
   updateAccount,
   updateCategory,
+  downloadHandoffExport,
   type SettingsView,
 } from '../data/api'
 import { LetterheadField } from './SetupPage'
@@ -64,6 +65,25 @@ export default function SettingsPage() {
           </Link>
         </div>
       </div>
+
+      {view.isSampleData && (
+        <section className="bd-card bd-card--wide">
+          <div className="bd-card__head">
+            <h2 className="bd-card__title">These are still the sample books</h2>
+            <p className="bd-card__hint">
+              Riverbend is a worked example: a fictional community, a full year of invented
+              transactions, and figures chosen to show what each screen does. None of it is
+              yours. Clearing it takes about ten seconds and leaves the app ready for your
+              own Assembly.
+            </p>
+          </div>
+          <div className="bd-actions">
+            <a className="bd-btn bd-btn--primary" href="#start-fresh">
+              Take me to it
+            </a>
+          </div>
+        </section>
+      )}
 
       <AssemblySection view={view} onSaved={setView} />
       <AccountsSection view={view} onSaved={setView} />
@@ -537,16 +557,35 @@ function LetterheadSection({ view, onSaved }: { view: SettingsView; onSaved: Sav
 /**
  * Clearing the books.
  *
- * The backup comes first on the screen, not as an afterthought, because this is
- * the only thing in Bedrock that destroys records and the export is the only
- * way back from it. Typing the Assembly's name is checked on the server against
- * the stored name, so it cannot be shortcut by a client.
+ * This used to be folded behind a disclosure and a trip to another page for the
+ * backup, and the result was a treasurer who could not find the way out of a
+ * demonstration. The ceremony has been moved to where it does some good: the
+ * backup happens here, in one click, and the screen says afterwards what file
+ * it wrote — so "did I actually take one?" has a visible answer.
+ *
+ * What stays is the part that is actually a safeguard. The Assembly's name has
+ * to be typed back, and it is checked on the server against the stored name, so
+ * no client can shortcut it. Everything else was friction pretending to be
+ * safety, which is worse than either.
  */
 function DangerSection({ view }: { view: SettingsView }) {
   const [confirmation, setConfirmation] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [open, setOpen] = useState(false)
+  const [backup, setBackup] = useState<string | null>(null)
+  const [backingUp, setBackingUp] = useState(false)
+
+  const takeBackup = async () => {
+    setProblem(null)
+    setBackingUp(true)
+    try {
+      setBackup(await downloadHandoffExport())
+    } catch (cause) {
+      setProblem(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBackingUp(false)
+    }
+  }
 
   const reset = async () => {
     setProblem(null)
@@ -563,79 +602,78 @@ function DangerSection({ view }: { view: SettingsView }) {
   }
 
   return (
-    <section className="bd-card bd-card--wide">
+    <section className="bd-card bd-card--wide" id="start-fresh">
       <div className="bd-card__head">
         <h2 className="bd-card__title">Clear these books and start again</h2>
         <p className="bd-card__hint">
-          For a deployment that was filled with a demonstration and needs to hold something
-          true. It deletes every transaction, receipt, report, fund, donor record and audit
-          entry, and it cannot be undone from inside the app.
+          Deletes every transaction, receipt, report, fund, donor record and audit entry,
+          and leaves the app ready to be set up for your Assembly. It cannot be undone from
+          inside the app — the backup below is the only way back.
         </p>
       </div>
 
-      <ol className="bd-steps">
-        <li className="bd-step">
-          <span className="bd-step__number">1</span>
-          <span className="bd-step__title">
-            Take a backup first
-            <span className="bd-step__detail">
-              A complete copy of everything, as one file.{' '}
-              <Link to="/audit/handover">Download it from the handover page</Link>, and keep
-              it somewhere that is not this laptop. The same page reads one back in, which is
-              the only way to undo what is below.
-            </span>
-          </span>
-        </li>
-        <li className="bd-step bd-step--irreversible">
-          <span className="bd-step__number">2</span>
-          <span className="bd-step__title">
-            Then clear them
-            <span className="bd-step__detail">
-              The donor PIN goes too. Encrypted names in a backup taken before this stay
-              unreadable without it — that is the encryption working correctly, and it is
-              worth knowing before rather than after.
-            </span>
-          </span>
-        </li>
-      </ol>
-
-      {!open ? (
-        <div className="bd-actions">
-          <button type="button" className="bd-btn bd-btn--ghost" onClick={() => setOpen(true)}>
-            I have a backup — clear the books
+      <div className="bd-formrow">
+        <div className="bd-field">
+          <span className="bd-field__label">First, take a backup</span>
+          <button
+            type="button"
+            className="bd-btn bd-btn--solid"
+            disabled={backingUp}
+            onClick={() => void takeBackup()}
+          >
+            {backingUp ? 'Preparing…' : backup ? 'Download another' : 'Download a backup'}
           </button>
         </div>
+        <div className="bd-field">
+          <span className="bd-field__label">
+            {view.isSampleData ? 'Then type this to confirm' : `Then type “${view.name}”`}
+          </span>
+          <input
+            className="bd-input"
+            value={confirmation}
+            onChange={(e) => setConfirmation(e.target.value)}
+            placeholder={view.name}
+            aria-label={`Type ${view.name} to confirm`}
+          />
+        </div>
+      </div>
+
+      {backup ? (
+        <p className="bd-note">
+          Saved <strong>{backup}</strong> — a complete copy of everything, readable by{' '}
+          <Link to="/audit/handover">the handover page</Link>. Keep it somewhere that is not
+          this laptop.
+        </p>
+      ) : view.isSampleData ? (
+        <p className="bd-note">
+          Nothing here is yours, so a backup of the sample books is optional — take one only
+          if you want a copy of the worked example to look at later.
+        </p>
       ) : (
-        <>
-          <label className="bd-field">
-            <span className="bd-field__label">
-              Type “{view.name}” to confirm
-            </span>
-            <input
-              className="bd-input"
-              value={confirmation}
-              onChange={(e) => setConfirmation(e.target.value)}
-              placeholder={view.name}
-            />
-          </label>
-
-          {problem && <p className="bd-warn">{problem}</p>}
-
-          <div className="bd-actions">
-            <button
-              type="button"
-              className="bd-btn bd-btn--primary"
-              disabled={busy || confirmation !== view.name}
-              onClick={() => void reset()}
-            >
-              {busy ? 'Clearing…' : 'Delete everything'}
-            </button>
-            <button type="button" className="bd-btn bd-btn--ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-          </div>
-        </>
+        <p className="bd-warn">
+          No backup has been taken in this session. These are real books — download one
+          before going any further.
+        </p>
       )}
+
+      <p className="bd-note">
+        The donor PIN goes too. Encrypted names inside a backup taken before this stay
+        unreadable without it — that is the encryption working correctly, and it is worth
+        knowing before rather than after.
+      </p>
+
+      {problem && <p className="bd-warn">{problem}</p>}
+
+      <div className="bd-actions">
+        <button
+          type="button"
+          className="bd-btn bd-btn--primary"
+          disabled={busy || confirmation !== view.name}
+          onClick={() => void reset()}
+        >
+          {busy ? 'Clearing…' : 'Delete everything and start fresh'}
+        </button>
+      </div>
     </section>
   )
 }

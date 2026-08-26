@@ -14,11 +14,12 @@ import {
   setLetterhead,
   updateAccount,
   updateCategory,
+  isSampleData,
   LETTERHEAD_MAX_BYTES,
 } from './repo/settings'
 import { exportEverything } from './repo/handoff'
 import { restore } from './repo/restore'
-import { setupStatus } from './repo/setup'
+import { setUpAssembly, setupStatus } from './repo/setup'
 import { loadChoices } from './repo/ledger'
 import { handleApi } from './api'
 import { ASSEMBLY_ID, SEED_TODAY, seed } from './seed'
@@ -145,6 +146,43 @@ describe('correcting what setup got wrong', () => {
     expect(after!.funds.find((f) => f.key === 'national')?.contributionCount).toBe(
       national.contributionCount,
     )
+  })
+})
+
+describe('knowing the books are only a demonstration', () => {
+  // A deployment full of the worked example looks exactly like one in use —
+  // the same screens, the same confident totals — so a treasurer who does not
+  // already know has no reason to go looking for the way out.
+  it('recognises the fixture', async () => {
+    const db = await seeded()
+    expect(await isSampleData(db, ASSEMBLY_ID)).toBe(true)
+  })
+
+  it('does not mistake an Assembly’s own books for it', async () => {
+    const db = openNodeDatabase(':memory:')
+    await migrate(db)
+    await setUpAssembly(
+      db, ASSEMBLY_ID,
+      {
+        assemblyName: 'Riverbend Local Spiritual Assembly',
+        shortName: 'Riverbend',
+        openedOn: '2026-08-01',
+        funds: [{ key: 'local', label: 'Local Fund', isPassthrough: false }],
+        accounts: [{ name: 'Bank', kind: 'bank', openingBalanceCents: 100_000 }],
+        categories: [],
+        declared: { local: 100_000 },
+        declaredBy: 'outgoing',
+      },
+      ACTOR, NOW,
+    )
+    expect(await isSampleData(db, ASSEMBLY_ID)).toBe(false)
+  })
+
+  it('stops saying so once the books are cleared', async () => {
+    const db = await seeded()
+    const assembly = await db.get<{ name: string }>('SELECT name FROM assemblies')
+    await resetEverything(db, ASSEMBLY_ID, assembly!.name, ACTOR)
+    expect(await isSampleData(db, ASSEMBLY_ID)).toBe(false)
   })
 })
 

@@ -9,6 +9,7 @@
 
 import { monthsForYear, nawRuz, toDayIndex } from '../../calendar/badi'
 import { loadFundBalances } from './funds'
+import { isSampleData } from './settings'
 import { reconcileStanding } from './reconcile'
 import type {
   AttentionView,
@@ -149,7 +150,10 @@ export async function loadYear(
   const onHandTodayCents = openingBalanceCents + (totals?.flows ?? 0)
 
   const funds = await loadFundBalances(db, assemblyId, onHandTodayCents)
-  const attention = await loadAttention(db, assemblyId)
+  const [attention, sample] = await Promise.all([
+    loadAttention(db, assemblyId),
+    isSampleData(db, assemblyId),
+  ])
 
   return {
     bahaiYear,
@@ -168,6 +172,7 @@ export async function loadYear(
     months,
     funds,
     attention,
+    isSampleData: sample,
   }
 }
 

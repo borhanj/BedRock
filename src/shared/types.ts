@@ -68,6 +68,12 @@ export interface YearView {
   readonly months: readonly MonthActivityView[]
   readonly funds: readonly FundBalanceView[]
   readonly attention: readonly AttentionView[]
+  /**
+   * True while the database still holds the worked example Bedrock ships with.
+   * The app says so on every screen, because a deployment full of a
+   * demonstration looks exactly like one in use.
+   */
+  readonly isSampleData: boolean
 }
 
 export interface ReportLineView {

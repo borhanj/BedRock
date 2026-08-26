@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useYearState } from '../data/YearContext'
 
 const NAV = [
@@ -15,6 +15,7 @@ export default function AppShell() {
   const state = useYearState()
   const assembly = state.status === 'ready' ? state.year.assembly : null
   const bahaiYear = state.status === 'ready' ? state.year.bahaiYear : null
+  const sample = state.status === 'ready' && state.year.isSampleData
 
   return (
     <>
@@ -52,6 +53,24 @@ export default function AppShell() {
           )}
         </div>
       </header>
+
+      {/* Said on every screen, not tucked into Settings.
+          A deployment full of the worked example looks exactly like one in
+          use — the same totals, the same confident figures — so a treasurer
+          who does not already know has no reason to go looking for the way
+          out. This is that reason. */}
+      {sample && (
+        <div className="bd-banner" role="status">
+          <span>
+            <strong>These are sample books.</strong> Everything here is a worked example
+            for a community that does not exist. Clear it out when you are ready to keep
+            your own.
+          </span>
+          <Link className="bd-btn bd-btn--solid" to="/settings#start-fresh">
+            Start fresh
+          </Link>
+        </div>
+      )}
 
       <main>
         <Outlet />

@@ -91,6 +91,14 @@ contains them. When the previous year's journal turns up, `/setup` on an Assembl
 already has books is where the wall moves — and moving it leaves a checkpoint, so the
 history loaded behind it has to reproduce the figure the Assembly had already accepted.
 
+**Phase 10 — getting started.** Setup is a seven-step walkthrough rather than one long
+form: what to have to hand, then the Assembly, the accounts, the funds, what each holds,
+the finishing touches, and a review before anything is written. Each step validates itself
+so nothing is discovered at the end, and nothing is saved until the last one.
+
+A deployment still holding the worked example says so on every screen, with the way out one
+click away — a database full of a demonstration otherwise looks exactly like one in use.
+
 **Phase 9 — settings, and starting over.** `/settings`: rename the Assembly, add and
 retire bank accounts and cash journals, add and rename funds, add and archive categories,
 and upload the letterhead that prints at the top of every receipt. Setup takes any number
@@ -158,7 +166,7 @@ Until those are set the Worker serves the API to nobody — see below.
 
 ## Picking this up
 
-Everything below is current as of the last commit. `npm test` should show **404 passing**;
+Everything below is current as of the last commit. `npm test` should show **407 passing**;
 if it does not, start there rather than with new work.
 
 ### Next, in order
@@ -443,6 +451,28 @@ over-forwarded — and only one of them learned about openings. The dashboard sa
 held while the remittance screen refused to forward $250, with nothing on either screen to
 explain the contradiction. They now share one SQL expression, `fundHeldCents`, so they cannot
 drift again.
+
+**A deployment full of a demonstration looks exactly like one in use.** Same screens, same
+confident totals, and no reason for a treasurer who does not already know to go looking for
+the way out. So `isSampleData` recognises the shipped fixture — by two marks together, since
+either alone would eventually be wrong: accounts under literal ids that `setUpAssembly` never
+generates, and no opening date, which books opened through setup always have. A banner then
+says so on every screen until it is not true.
+
+**The reset's ceremony is where it does some good.** It used to sit behind a disclosure and
+a trip to another page for the backup, which is how a treasurer ends up unable to find the
+way out of a demonstration. The backup now happens on the same card in one click and the
+screen names the file it wrote, so "did I actually take one?" has a visible answer. What
+stays is the Assembly's name typed back, checked on the server against the stored name.
+Everything else was friction pretending to be safety, which is worse than either.
+
+**Setup is a walkthrough because the person doing it has not done it before.** They are
+holding three pieces of paper that do not agree and do not yet know which questions matter;
+one page of thirty fields answers none of that. Each step validates before letting them past,
+because being told at the end that something on the second screen was wrong is how people
+abandon forms. And the wizard steers around the one-own-fund rule rather than waiting to
+refuse it: marking a fund as the Assembly's own quietly demotes the previous one, which is
+what changing your mind meant anyway.
 
 **Rename freely, remove nothing.** An account, fund or category that has ever had money
 against it is never deleted from Settings. Every past report points at these rows, and a

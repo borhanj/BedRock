@@ -31,6 +31,30 @@ import { setAuditActor } from '../db/adapter'
 export class SettingsError extends Error {}
 
 /**
+ * Are these the sample books that ship with Bedrock, rather than an Assembly's?
+ *
+ * Worth knowing because a deployment still holding the worked year looks
+ * exactly like one in use — same screens, same figures, same confident totals —
+ * and a treasurer who does not realise has no reason to look for the way out.
+ * The app can say so plainly instead.
+ *
+ * Two marks together, because either alone would eventually be wrong. The
+ * fixture writes accounts under literal ids that `setUpAssembly` never
+ * produces, since it generates them from the Assembly id and a counter. And
+ * books opened through setup always record the day they opened, while the
+ * fixture never has. Real books can match neither.
+ */
+export async function isSampleData(db: SqlDatabase, assemblyId: string): Promise<boolean> {
+  const row = await db.get<{ fixture_accounts: number; opened_on: string | null }>(
+    `SELECT (SELECT COUNT(*) FROM accounts
+              WHERE assembly_id = ? AND id IN ('acct-bank', 'acct-cash')) AS fixture_accounts,
+            (SELECT opened_on FROM assemblies WHERE id = ?) AS opened_on`,
+    [assemblyId, assemblyId],
+  )
+  return (row?.fixture_accounts ?? 0) > 0 && (row?.opened_on ?? null) === null
+}
+
+/**
  * The largest letterhead accepted, before base64 expansion.
  *
  * A logo at the top of a receipt does not need more, and the ceiling matters:
@@ -82,6 +106,8 @@ export interface SettingsView {
   readonly name: string
   readonly shortName: string
   readonly openedOn: string | null
+  /** These are the books Bedrock ships with, not this Assembly's. */
+  readonly isSampleData: boolean
   readonly accounts: readonly AccountSetting[]
   readonly funds: readonly FundSetting[]
   readonly categories: readonly CategorySetting[]
@@ -99,7 +125,7 @@ export async function loadSettings(
   )
   if (!assembly) return null
 
-  const [accounts, funds, categories, branding] = await Promise.all([
+  const [accounts, funds, categories, branding, sample] = await Promise.all([
     db.all<{
       id: string
       name: string
@@ -148,6 +174,7 @@ export async function loadSettings(
          FROM branding WHERE assembly_id = ?`,
       [assemblyId],
     ),
+    isSampleData(db, assemblyId),
   ])
 
   return {
@@ -155,6 +182,7 @@ export async function loadSettings(
     name: assembly.name,
     shortName: assembly.short_name,
     openedOn: assembly.opened_on,
+    isSampleData: sample,
     accounts: accounts.map((a) => ({
       id: a.id,
       name: a.name,

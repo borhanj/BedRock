@@ -29,7 +29,7 @@ import type { Cents } from '../../lib/money'
 import type { SqlDatabase, SqlStatement } from '../db/adapter'
 import { setAuditActor } from '../db/adapter'
 import { assertOwnFundStated, entryStatement } from './opening'
-import { setLetterhead, LETTERHEAD_MAX_BYTES } from './settings'
+import { isSampleData, setLetterhead, LETTERHEAD_MAX_BYTES } from './settings'
 
 export class SetupError extends Error {}
 
@@ -168,6 +168,7 @@ export async function setupStatus(db: SqlDatabase, assemblyId: string) {
   return {
     assemblyId,
     isSetUp: assembly !== null,
+    isSampleData: assembly === null ? false : await isSampleData(db, assemblyId),
     assemblyName: assembly?.name ?? null,
     openedOn: assembly?.opened_on ?? null,
     suggestedFunds: SUGGESTED_FUNDS,
